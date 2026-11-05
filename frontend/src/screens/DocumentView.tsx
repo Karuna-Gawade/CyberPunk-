@@ -62,41 +62,41 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
   const imageUrl = getDocumentPageImageUrl(currentDoc.doc_id, currentPage);
 
   return (
-    <div style={{ display: 'flex', gap: '20px', height: 'calc(100vh - 140px)' }}>
+    <div style={{ display: 'flex', gap: '16px', height: 'calc(100vh - 140px)' }}>
       {/* Left: Document View with BBox Overlay */}
       <div
+        className="panel"
         style={{
           flex: '1 1 65%',
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: '#0f172a',
-          border: '1px solid #1e293b',
-          borderRadius: '8px',
           overflow: 'hidden',
+          backgroundColor: 'var(--bg-panel)',
         }}
       >
         {/* Document Header Controls */}
         <div
           style={{
-            padding: '12px 16px',
-            backgroundColor: '#1e293b',
+            padding: '8px 14px',
+            backgroundColor: 'var(--bg-subtle)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            borderBottom: '1px solid #334155',
+            borderBottom: '1px solid var(--border-color)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <select
               value={currentDoc.doc_id}
               onChange={(e) => onSelectDoc && onSelectDoc(e.target.value)}
               style={{
-                backgroundColor: '#0f172a',
-                color: '#f8fafc',
-                border: '1px solid #475569',
-                padding: '6px 12px',
+                backgroundColor: 'var(--bg-panel)',
+                color: 'var(--text-main)',
+                border: '1px solid var(--border-color)',
+                padding: '4px 10px',
                 borderRadius: '4px',
-                fontSize: '13px',
+                fontSize: '12px',
+                fontFamily: 'var(--font-mono)',
               }}
             >
               {documents.map((d) => (
@@ -107,13 +107,14 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
             </select>
             <span
               style={{
-                fontSize: '11px',
+                fontSize: '10px',
                 fontWeight: '700',
-                padding: '2px 8px',
+                padding: '2px 6px',
                 borderRadius: '4px',
                 textTransform: 'uppercase',
-                backgroundColor: currentDoc.status === 'processed' ? '#064e3b' : '#7f1d1d',
-                color: currentDoc.status === 'processed' ? '#34d399' : '#f87171',
+                fontFamily: 'var(--font-mono)',
+                backgroundColor: currentDoc.status === 'processed' ? '#064e3b' : 'var(--tier-manip)',
+                color: '#FFFFFF',
               }}
             >
               {currentDoc.status}
@@ -125,33 +126,19 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
               <button
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                style={{
-                  backgroundColor: '#334155',
-                  color: '#f8fafc',
-                  border: 'none',
-                  padding: '4px 10px',
-                  borderRadius: '4px',
-                  cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
-                  opacity: currentPage <= 1 ? 0.5 : 1,
-                }}
+                className="btn-action"
+                style={{ padding: '2px 8px', fontSize: '11px' }}
               >
                 &larr; Prev
               </button>
-              <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                 Page {currentPage} of {currentDoc.pages}
               </span>
               <button
                 disabled={currentPage >= currentDoc.pages}
                 onClick={() => setCurrentPage((p) => Math.min(currentDoc.pages, p + 1))}
-                style={{
-                  backgroundColor: '#334155',
-                  color: '#f8fafc',
-                  border: 'none',
-                  padding: '4px 10px',
-                  borderRadius: '4px',
-                  cursor: currentPage >= currentDoc.pages ? 'not-allowed' : 'pointer',
-                  opacity: currentPage >= currentDoc.pages ? 0.5 : 1,
-                }}
+                className="btn-action"
+                style={{ padding: '2px 8px', fontSize: '11px' }}
               >
                 Next &rarr;
               </button>
@@ -164,10 +151,10 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
           style={{
             flex: 1,
             overflow: 'auto',
-            padding: '20px',
+            padding: '16px',
             display: 'flex',
             justifyContent: 'center',
-            backgroundColor: '#020617',
+            backgroundColor: 'var(--bg-main)',
           }}
         >
           <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -177,12 +164,12 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
               style={{
                 display: 'block',
                 maxWidth: '100%',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                border: '1px solid #334155',
+                border: '1px solid var(--border-color)',
+                borderRadius: '2px',
               }}
             />
 
-            {/* Bounding Box Overlay SVG */}
+            {/* Bounding Box Overlay SVG (2px border, 10% fill, hover flash) */}
             <svg
               style={{
                 position: 'absolute',
@@ -200,17 +187,29 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
                 const height = Math.max(2, y1 - y0);
 
                 return (
-                  <rect
-                    key={f.field_id}
-                    x={x0}
-                    y={y0}
-                    width={width}
-                    height={height}
-                    fill={isHovered ? 'rgba(56, 189, 248, 0.25)' : 'rgba(59, 130, 246, 0.1)'}
-                    stroke={isHovered ? '#38bdf8' : '#3b82f6'}
-                    strokeWidth={isHovered ? 2.5 : 1.2}
-                    strokeDasharray={isHovered ? 'none' : '2,2'}
-                  />
+                  <g key={f.field_id}>
+                    <rect
+                      x={x0}
+                      y={y0}
+                      width={width}
+                      height={height}
+                      fill={isHovered ? 'var(--highlight-flash)' : 'var(--overlay-bg)'}
+                      stroke={isHovered ? 'var(--accent-main)' : 'var(--overlay-border)'}
+                      strokeWidth={2}
+                    />
+                    {isHovered && (
+                      <text
+                        x={x0}
+                        y={Math.max(10, y0 - 3)}
+                        fill="var(--overlay-border)"
+                        fontSize="9px"
+                        fontFamily="var(--font-mono)"
+                        fontWeight="bold"
+                      >
+                        {f.name}
+                      </text>
+                    )}
+                  </g>
                 );
               })}
 
@@ -221,9 +220,10 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
                   y={highlightBBox[1]}
                   width={highlightBBox[2] - highlightBBox[0]}
                   height={highlightBBox[3] - highlightBBox[1]}
-                  fill="rgba(239, 68, 68, 0.25)"
-                  stroke="#ef4444"
-                  strokeWidth={3}
+                  fill="var(--highlight-flash)"
+                  stroke="var(--overlay-border)"
+                  strokeWidth={2}
+                  className="flash-target"
                 />
               )}
             </svg>
@@ -233,37 +233,36 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
 
       {/* Right: Extracted Fields Sidebar */}
       <div
+        className="panel"
         style={{
           flex: '1 1 35%',
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: '#0f172a',
-          border: '1px solid #1e293b',
-          borderRadius: '8px',
           overflow: 'hidden',
+          backgroundColor: 'var(--bg-panel)',
         }}
       >
         <div
           style={{
-            padding: '12px 16px',
-            backgroundColor: '#1e293b',
-            borderBottom: '1px solid #334155',
+            padding: '8px 14px',
+            backgroundColor: 'var(--bg-subtle)',
+            borderBottom: '1px solid var(--border-color)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
           }}
         >
-          <h3 style={{ margin: 0, fontSize: '14px', color: '#f8fafc', fontWeight: '600' }}>
+          <h3 style={{ margin: 0, fontSize: '13px', color: 'var(--text-main)', fontWeight: '700' }}>
             Extracted Fields ({pageFields.length})
           </h3>
-          <span style={{ fontSize: '11px', color: '#94a3b8' }}>DPI: 150</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>DPI: 150</span>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
           {loading ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>Loading fields...</div>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading fields...</div>
           ) : pageFields.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
               No structured fields extracted on this page.
             </div>
           ) : (
@@ -271,46 +270,50 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
               const displayVal = revealedValues[f.field_id] || (typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value));
               const isMasked = f.name.includes('aadhaar') || f.name.includes('pan');
               const isRevealed = Boolean(revealedValues[f.field_id]);
+              const isHovered = hoveredFieldId === f.field_id;
 
               return (
                 <div
                   key={f.field_id}
                   onMouseEnter={() => setHoveredFieldId(f.field_id)}
                   onMouseLeave={() => setHoveredFieldId(null)}
+                  className="panel"
                   style={{
-                    backgroundColor: hoveredFieldId === f.field_id ? '#1e293b' : '#0f172a',
-                    border: `1px solid ${hoveredFieldId === f.field_id ? '#38bdf8' : '#334155'}`,
-                    borderRadius: '6px',
-                    padding: '10px',
-                    marginBottom: '8px',
-                    transition: 'all 0.15s ease',
+                    backgroundColor: isHovered ? 'var(--bg-subtle)' : 'var(--bg-panel)',
+                    borderColor: isHovered ? 'var(--text-muted)' : 'var(--border-color)',
+                    padding: '8px 10px',
+                    marginBottom: '6px',
+                    transition: 'border-color 0.15s ease',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#93c5fd', textTransform: 'uppercase' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
                       {f.name.replace(/_/g, ' ')}
                     </span>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       <span
                         style={{
-                          fontSize: '10px',
-                          backgroundColor: '#1e293b',
-                          color: '#94a3b8',
-                          padding: '1px 5px',
+                          fontSize: '9.5px',
+                          backgroundColor: 'var(--bg-subtle)',
+                          color: 'var(--text-muted)',
+                          padding: '1px 4px',
                           borderRadius: '3px',
-                          border: '1px solid #475569',
+                          border: '1px solid var(--border-color)',
+                          fontFamily: 'var(--font-mono)',
                         }}
                       >
                         {f.source}
                       </span>
                       <span
                         style={{
-                          fontSize: '10px',
-                          fontWeight: '600',
-                          backgroundColor: f.confidence >= 0.85 ? '#064e3b' : '#78350f',
-                          color: f.confidence >= 0.85 ? '#34d399' : '#fcd34d',
-                          padding: '1px 5px',
+                          fontSize: '9.5px',
+                          fontWeight: '700',
+                          backgroundColor: f.confidence >= 0.85 ? 'var(--bg-subtle)' : 'var(--bg-subtle)',
+                          color: f.confidence >= 0.85 ? '#059669' : 'var(--tier-incons)',
+                          border: '1px solid var(--border-color)',
+                          padding: '1px 4px',
                           borderRadius: '3px',
+                          fontFamily: 'var(--font-mono)',
                         }}
                       >
                         {(f.confidence * 100).toFixed(0)}%
@@ -318,27 +321,23 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '13px', color: '#f8fafc', wordBreak: 'break-word', marginTop: '4px' }}>
+                  <div style={{ fontSize: '12.5px', color: 'var(--text-main)', wordBreak: 'break-word', marginTop: '2px', fontFamily: 'var(--font-mono)' }}>
                     {f.unable_to_assess ? (
-                      <span style={{ color: '#f87171', fontStyle: 'italic' }}>Unable to assess this field</span>
+                      <span style={{ color: 'var(--tier-manip)', fontStyle: 'italic', fontFamily: 'var(--font-sans)' }}>Unable to assess this field</span>
                     ) : (
                       displayVal
                     )}
                   </div>
 
                   {isMasked && !f.unable_to_assess && (
-                    <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-end' }}>
                       <button
                         onClick={() => handleReveal(f.field_id)}
                         disabled={isRevealed}
+                        className="btn-action"
                         style={{
-                          backgroundColor: isRevealed ? '#334155' : '#0284c7',
-                          color: '#ffffff',
-                          border: 'none',
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          cursor: isRevealed ? 'default' : 'pointer',
+                          fontSize: '10px',
+                          padding: '2px 6px',
                         }}
                       >
                         {isRevealed ? 'Revealed (Audited)' : 'Reveal (Audit-Logged)'}

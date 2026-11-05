@@ -15,27 +15,16 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onSelectEvide
   const getTierColor = (tier: string) => {
     switch (tier) {
       case 'potential_manipulation':
-        return { bg: '#450a0a', text: '#f87171', border: '#b91c1c' };
+        return { borderLeft: 'var(--tier-manip)', badgeClass: 'badge-manip' };
       case 'inconsistency':
-        return { bg: '#422006', text: '#fbbf24', border: '#d97706' };
+        return { borderLeft: 'var(--tier-incons)', badgeClass: 'badge-incons' };
       case 'observation':
       default:
-        return { bg: '#172554', text: '#60a5fa', border: '#2563eb' };
+        return { borderLeft: 'var(--tier-obs)', badgeClass: 'badge-obs' };
     }
-  };
-
-  const getStatusBadge = () => {
-    if (finding.status === 'confirmed_by_reviewer') {
-      return { bg: '#14532d', text: '#4ade80', border: '#16a34a', label: 'Confirmed by Reviewer' };
-    }
-    if (finding.status === 'dismissed') {
-      return { bg: '#374151', text: '#9ca3af', border: '#4b5563', label: 'Dismissed' };
-    }
-    return { bg: '#0f172a', text: '#38bdf8', border: '#0284c7', label: 'Requires investigation' };
   };
 
   const colors = getTierColor(finding.tier);
-  const statusBadge = getStatusBadge();
 
   const handleAction = async (decision: ReviewDecision, reason: string = '') => {
     if (!onReview) return;
@@ -53,49 +42,52 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onSelectEvide
 
   return (
     <div
+      className="panel"
       style={{
-        backgroundColor: '#1e293b',
-        border: `1px solid ${colors.border}`,
-        borderRadius: '8px',
-        padding: '16px',
-        marginBottom: '12px',
-        color: '#f8fafc',
+        borderLeft: `4px solid ${colors.borderLeft}`,
+        padding: '14px',
+        marginBottom: '10px',
+        backgroundColor: 'var(--bg-panel)',
+        color: 'var(--text-main)',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <span
+            className={colors.badgeClass}
             style={{
-              backgroundColor: colors.bg,
-              color: colors.text,
-              border: `1px solid ${colors.border}`,
-              padding: '2px 8px',
+              padding: '2px 6px',
               borderRadius: '4px',
-              fontSize: '11px',
+              fontSize: '10px',
               fontWeight: '700',
               textTransform: 'uppercase',
+              letterSpacing: '0.04em',
             }}
           >
             {finding.tier.replace('_', ' ')}
           </span>
           <span
             style={{
-              backgroundColor: '#334155',
-              color: '#94a3b8',
+              backgroundColor: 'var(--bg-subtle)',
+              color: 'var(--text-muted)',
+              border: '1px solid var(--border-color)',
               padding: '2px 6px',
               borderRadius: '4px',
               fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
             }}
           >
             Rule: {finding.rule_id}
           </span>
           <span
             style={{
-              backgroundColor: '#334155',
-              color: '#cbd5e1',
+              backgroundColor: 'var(--bg-subtle)',
+              color: 'var(--text-muted)',
+              border: '1px solid var(--border-color)',
               padding: '2px 6px',
               borderRadius: '4px',
               fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
             }}
           >
             Strength: {finding.strength}
@@ -103,81 +95,58 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onSelectEvide
         </div>
         <span
           style={{
-            backgroundColor: statusBadge.bg,
-            color: statusBadge.text,
-            border: `1px solid ${statusBadge.border}`,
+            backgroundColor: 'var(--bg-subtle)',
+            color: 'var(--text-main)',
+            border: '1px solid var(--border-color)',
             padding: '2px 8px',
             borderRadius: '4px',
             fontSize: '11px',
             fontWeight: '600',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          {statusBadge.label}
+          {finding.status === 'confirmed_by_reviewer' ? 'Confirmed by Reviewer' : finding.status === 'dismissed' ? 'Dismissed' : 'Requires investigation'}
         </span>
       </div>
 
-      <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', color: '#f1f5f9' }}>{finding.title}</h4>
-      <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4' }}>
+      <h4 style={{ margin: '0 0 6px 0', fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>{finding.title}</h4>
+      <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.45' }}>
         {finding.explanation}
       </p>
 
       {/* Reviewer details if already reviewed */}
       {finding.reviewer?.decision && (
-        <div style={{ marginBottom: '10px', padding: '6px 10px', backgroundColor: '#0f172a', borderRadius: '4px', fontSize: '12px', color: '#94a3b8' }}>
+        <div style={{ marginBottom: '10px', padding: '6px 10px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
           <strong>Decision:</strong> {finding.reviewer.decision} | <strong>By:</strong> {finding.reviewer.by || 'Unknown'} | <strong>At:</strong> {finding.reviewer.at?.slice(0, 19)}
-          {finding.reviewer.reason && <div><strong>Reason:</strong> {finding.reviewer.reason}</div>}
+          {finding.reviewer.reason && <div style={{ marginTop: '2px' }}><strong>Reason:</strong> {finding.reviewer.reason}</div>}
         </div>
       )}
 
       {/* Human Review Actions */}
       {onReview && (
         <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', color: '#94a3b8', marginRight: '4px' }}>Reviewer Action:</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', textTransform: 'uppercase' }}>Reviewer Action:</span>
           <button
             disabled={submitting}
             onClick={() => handleAction('confirm', 'Confirmed by human reviewer')}
-            style={{
-              backgroundColor: '#166534',
-              color: '#bbf7d0',
-              border: '1px solid #22c55e',
-              borderRadius: '4px',
-              padding: '4px 10px',
-              fontSize: '11px',
-              fontWeight: '600',
-              cursor: submitting ? 'not-allowed' : 'pointer',
-            }}
+            className="btn-action"
+            style={{ fontSize: '11px', padding: '3px 8px' }}
           >
             Confirm Observation
           </button>
           <button
             disabled={submitting}
             onClick={() => setShowDismissModal(true)}
-            style={{
-              backgroundColor: '#475569',
-              color: '#f1f5f9',
-              border: '1px solid #64748b',
-              borderRadius: '4px',
-              padding: '4px 10px',
-              fontSize: '11px',
-              fontWeight: '600',
-              cursor: submitting ? 'not-allowed' : 'pointer',
-            }}
+            className="btn-action"
+            style={{ fontSize: '11px', padding: '3px 8px' }}
           >
             Dismiss (Reason Req.)
           </button>
           <button
             disabled={submitting}
             onClick={() => handleAction('escalate', 'Escalated for senior review')}
-            style={{
-              backgroundColor: '#854d0e',
-              color: '#fef08a',
-              border: '1px solid #eab308',
-              borderRadius: '4px',
-              padding: '4px 10px',
-              fontSize: '11px',
-              fontWeight: '600',
-              cursor: submitting ? 'not-allowed' : 'pointer',
-            }}
+            className="btn-action"
+            style={{ fontSize: '11px', padding: '3px 8px' }}
           >
             Escalate
           </button>
@@ -186,8 +155,8 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onSelectEvide
 
       {/* Dismiss Modal */}
       {showDismissModal && (
-        <div style={{ marginBottom: '12px', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #ef4444', borderRadius: '6px' }}>
-          <div style={{ fontSize: '12px', color: '#fca5a5', marginBottom: '6px', fontWeight: '600' }}>
+        <div style={{ marginBottom: '12px', padding: '10px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--tier-manip)', borderRadius: '4px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--tier-manip)', marginBottom: '6px', fontWeight: '600' }}>
             Provide required justification to dismiss this advisory finding:
           </div>
           <input
@@ -198,34 +167,30 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onSelectEvide
             style={{
               width: '100%',
               padding: '6px 8px',
-              backgroundColor: '#1e293b',
-              border: '1px solid #475569',
+              backgroundColor: 'var(--bg-panel)',
+              border: '1px solid var(--border-color)',
               borderRadius: '4px',
-              color: '#fff',
+              color: 'var(--text-main)',
               fontSize: '12px',
               marginBottom: '8px',
               boxSizing: 'border-box',
+              fontFamily: 'var(--font-sans)',
             }}
           />
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
             <button
               onClick={() => setShowDismissModal(false)}
-              style={{ backgroundColor: 'transparent', color: '#94a3b8', border: 'none', cursor: 'pointer', fontSize: '11px' }}
+              className="btn-action"
+              style={{ fontSize: '11px' }}
             >
               Cancel
             </button>
             <button
               disabled={!dismissReason.trim() || submitting}
               onClick={() => handleAction('dismiss', dismissReason)}
+              className="btn-action btn-accent"
               style={{
-                backgroundColor: '#dc2626',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '4px 10px',
                 fontSize: '11px',
-                fontWeight: '600',
-                cursor: !dismissReason.trim() || submitting ? 'not-allowed' : 'pointer',
                 opacity: !dismissReason.trim() ? 0.5 : 1,
               }}
             >
@@ -235,22 +200,19 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onSelectEvide
         </div>
       )}
 
-      <div style={{ borderTop: '1px solid #334155', paddingTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center' }}>
+      <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
           Evidence ({finding.evidence.length} location{finding.evidence.length > 1 ? 's' : ''}):
         </span>
         {finding.evidence.map((ev, idx) => (
           <button
             key={idx}
             onClick={() => onSelectEvidence && onSelectEvidence(idx)}
+            className="btn-action"
             style={{
-              backgroundColor: '#0f172a',
-              border: '1px solid #475569',
-              borderRadius: '4px',
-              color: '#38bdf8',
-              padding: '3px 8px',
-              fontSize: '11px',
-              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '10.5px',
+              padding: '2px 6px',
             }}
           >
             {ev.doc_id} (Page {ev.page}) [{ev.bbox.join(', ')}]

@@ -40,32 +40,31 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onInvestigationReady
   };
 
   return (
-    <div style={{ maxWidth: '800px', margin: '40px auto', padding: '0 20px' }}>
+    <div style={{ maxWidth: '780px', margin: '30px auto', padding: '0 20px' }}>
       <div
+        className="panel"
         style={{
-          backgroundColor: '#1e293b',
-          border: '1px solid #334155',
-          borderRadius: '8px',
-          padding: '32px',
+          padding: '28px',
+          backgroundColor: 'var(--bg-panel)',
         }}
       >
-        <h2 style={{ margin: '0 0 12px 0', fontSize: '18px', color: '#f8fafc' }}>
+        <h2 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>
           Upload Document Bundle for Forensic Analysis
         </h2>
-        <p style={{ margin: '0 0 24px 0', fontSize: '13px', color: '#94a3b8', lineHeight: '1.5' }}>
+        <p style={{ margin: '0 0 20px 0', fontSize: '12.5px', color: 'var(--text-muted)', lineHeight: '1.45' }}>
           Select or drop synthetic Indian financial and identity documents (Aadhaar, PAN, Salary Slip, Bank Statement in PDF or image format).
           Originals are secured read-only; documents are classified and processed deterministically.
         </p>
 
         <div
           style={{
-            border: '2px dashed #475569',
-            borderRadius: '8px',
-            padding: '40px',
+            border: '2px dashed var(--border-color)',
+            borderRadius: '4px',
+            padding: '36px',
             textAlign: 'center',
-            backgroundColor: '#0f172a',
+            backgroundColor: 'var(--bg-subtle)',
             cursor: 'pointer',
-            marginBottom: '20px',
+            marginBottom: '16px',
           }}
           onClick={() => document.getElementById('file-input')?.click()}
         >
@@ -77,35 +76,36 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onInvestigationReady
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
-          <div style={{ color: '#38bdf8', fontSize: '14px', fontWeight: '600', marginBottom: '6px' }}>
+          <div style={{ color: 'var(--accent-main)', fontSize: '13px', fontWeight: '700', marginBottom: '4px' }}>
             {selectedFiles.length > 0
               ? `${selectedFiles.length} file(s) selected`
               : 'Click to select documents from your computer'}
           </div>
-          <div style={{ color: '#64748b', fontSize: '12px' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
             Supported formats: PDF (vector & scanned), PNG, JPG (150 DPI render pipeline)
           </div>
         </div>
 
         {selectedFiles.length > 0 && (
-          <div style={{ marginBottom: '20px' }}>
-            <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#cbd5e1' }}>Selected Files:</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ marginBottom: '16px' }}>
+            <h4 style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Selected Files:</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {selectedFiles.map((f, i) => (
                 <div
                   key={i}
+                  className="panel"
                   style={{
-                    backgroundColor: '#0f172a',
-                    padding: '8px 12px',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    color: '#94a3b8',
+                    backgroundColor: 'var(--bg-subtle)',
+                    padding: '6px 10px',
+                    fontSize: '11.5px',
+                    color: 'var(--text-main)',
                     display: 'flex',
                     justifyContent: 'space-between',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 >
                   <span>{f.name}</span>
-                  <span>{(f.size / 1024).toFixed(1)} KB</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{(f.size / 1024).toFixed(1)} KB</span>
                 </div>
               ))}
             </div>
@@ -113,19 +113,14 @@ export const UploadScreen: React.FC<UploadScreenProps> = ({ onInvestigationReady
         )}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', color: '#38bdf8' }}>{statusText}</span>
+          <span style={{ fontSize: '12px', color: 'var(--accent-main)', fontFamily: 'var(--font-mono)' }}>{statusText}</span>
           <button
             onClick={handleUploadAndProcess}
             disabled={loading || selectedFiles.length === 0}
+            className="btn-action btn-accent"
             style={{
-              backgroundColor: loading || selectedFiles.length === 0 ? '#334155' : '#0284c7',
-              color: '#ffffff',
-              border: 'none',
-              padding: '10px 24px',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: '600',
-              cursor: loading || selectedFiles.length === 0 ? 'not-allowed' : 'pointer',
+              padding: '6px 16px',
+              fontSize: '12px',
             }}
           >
             {loading ? 'Processing Bundle...' : 'Ingest & Analyze Bundle'}

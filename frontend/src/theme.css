@@ -1,0 +1,222 @@
+/* Base Theme & Palette Definitions strictly matching forensics_case_management_interface.html */
+
+:root {
+  --bg-main: #F8FAFC;
+  --bg-panel: #FFFFFF;
+  --bg-subtle: #F1F5F9;
+  --border-color: #CBD5E1;
+  --text-main: #111827;
+  --text-muted: #475569;
+  --accent-main: #0F2C59;
+
+  --tier-obs: #3B82F6;
+  --tier-incons: #D97706;
+  --tier-manip: #991B1B;
+
+  --overlay-border: #991B1B;
+  --overlay-bg: rgba(153, 27, 27, 0.10);
+  --highlight-flash: rgba(153, 27, 27, 0.35);
+
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: Consolas, "Courier New", monospace;
+}
+
+/* Classic Case File Theme Overrides */
+.theme-casefile {
+  --bg-main: #F4F1EA;
+  --bg-panel: #FBFAF7;
+  --bg-subtle: #ECE8DE;
+  --border-color: #D9D4C7;
+  --text-main: #1F2328;
+  --text-muted: #6B7280;
+  --accent-main: #2F4A6B;
+
+  --tier-obs: #5B7083;
+  --tier-incons: #B7791F;
+  --tier-manip: #8C2F39;
+
+  --overlay-border: #8C2F39;
+  --overlay-bg: rgba(140, 47, 57, 0.10);
+  --highlight-flash: rgba(140, 47, 57, 0.35);
+}
+
+/* Institutional Theme Overrides */
+.theme-institutional {
+  --bg-main: #F2F4F7;
+  --bg-panel: #FFFFFF;
+  --bg-subtle: #E5E9F0;
+  --border-color: #D5DAE1;
+  --text-main: #18202B;
+  --text-muted: #64748B;
+  --accent-main: #1F3A5F;
+
+  --tier-obs: #64748B;
+  --tier-incons: #B45309;
+  --tier-manip: #9F1D2C;
+
+  --overlay-border: #9F1D2C;
+  --overlay-bg: rgba(159, 29, 44, 0.10);
+  --highlight-flash: rgba(159, 29, 44, 0.35);
+}
+
+/* Control Room Theme Overrides */
+.theme-controlroom {
+  --bg-main: #14171A;
+  --bg-panel: #1C2024;
+  --bg-subtle: #24292E;
+  --border-color: #2B3138;
+  --text-main: #E6E8EB;
+  --text-muted: #8FA3B5;
+  --accent-main: #D9A441;
+
+  --tier-obs: #8FA3B5;
+  --tier-incons: #D9A441;
+  --tier-manip: #D8584F;
+
+  --overlay-border: #D8584F;
+  --overlay-bg: rgba(216, 88, 79, 0.15);
+  --highlight-flash: rgba(216, 88, 79, 0.45);
+}
+
+/* Global Reset */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-size: 13.5px;
+  line-height: 1.45;
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Panels */
+.panel {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+/* Buttons */
+.btn-action {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-action:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.btn-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-accent {
+  background-color: var(--accent-main);
+  color: #FFFFFF !important;
+  border: 1px solid var(--accent-main);
+}
+
+.theme-controlroom .btn-accent {
+  color: #14171A !important;
+  font-weight: bold;
+}
+
+/* Monospace & Tabular numbers */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.num-tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* Tier Badges */
+.badge-obs {
+  background-color: var(--tier-obs);
+  color: #FFFFFF;
+}
+
+.badge-incons {
+  background-color: var(--tier-incons);
+  color: #FFFFFF;
+}
+
+.badge-manip {
+  background-color: var(--tier-manip);
+  color: #FFFFFF;
+}
+
+/* Bounding box overlays */
+.evidence-overlay {
+  position: absolute;
+  border: 2px solid var(--overlay-border);
+  background-color: var(--overlay-bg);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.evidence-overlay:hover, .evidence-overlay.active {
+  background-color: var(--highlight-flash);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px var(--bg-panel);
+}
+
+.evidence-overlay .overlay-tag {
+  position: absolute;
+  top: -18px;
+  left: -2px;
+  background: var(--overlay-border);
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 4px;
+  font-weight: bold;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: 2px 2px 0 0;
+}
+
+/* Flash highlight animation */
+@keyframes flashHighlight {
+  0% { background-color: var(--highlight-flash); }
+  100% { background-color: transparent; }
+}
+
+.flash-target {
+  animation: flashHighlight 1.2s ease-out 1;
+}
+
+/* Compact Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

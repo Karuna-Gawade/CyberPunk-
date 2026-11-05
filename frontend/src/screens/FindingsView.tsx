@@ -72,12 +72,12 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
   return (
     <div style={{ maxWidth: '1000px', margin: '20px auto' }}>
       {/* Header with Case Status & Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: '18px', color: '#f8fafc', margin: '0 0 4px 0' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', margin: '0 0 4px 0' }}>
             Investigation Findings ({findings.length})
           </h2>
-          <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0, fontFamily: 'var(--font-mono)' }}>
             Deterministic rule results and multi-signal anomalies requiring human investigation.
           </p>
         </div>
@@ -85,40 +85,21 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             onClick={() => window.open(getDossierUrl(investigationId), '_blank')}
-            style={{
-              backgroundColor: '#0284c7',
-              color: '#ffffff',
-              border: 'none',
-              padding: '6px 14px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
+            className="btn-action btn-accent"
+            style={{ fontSize: '11px', padding: '5px 12px' }}
           >
             <span>Download Dossier PDF</span>
             {investigation?.case_decision ? (
-              <span style={{ fontSize: '10px', backgroundColor: '#0369a1', padding: '1px 5px', borderRadius: '3px' }}>FINAL</span>
+              <span style={{ fontSize: '9px', backgroundColor: 'rgba(255,255,255,0.2)', padding: '1px 4px', borderRadius: '2px', fontFamily: 'var(--font-mono)' }}>FINAL</span>
             ) : (
-              <span style={{ fontSize: '10px', backgroundColor: '#b45309', padding: '1px 5px', borderRadius: '3px' }}>DRAFT</span>
+              <span style={{ fontSize: '9px', backgroundColor: 'var(--tier-incons)', padding: '1px 4px', borderRadius: '2px', fontFamily: 'var(--font-mono)' }}>DRAFT</span>
             )}
           </button>
 
           <button
             onClick={() => setDecisionModalOpen(true)}
-            style={{
-              backgroundColor: investigation?.case_decision ? '#1e293b' : '#16a34a',
-              color: '#ffffff',
-              border: `1px solid ${investigation?.case_decision ? '#475569' : '#22c55e'}`,
-              padding: '6px 14px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
+            className="btn-action"
+            style={{ fontSize: '11px', padding: '5px 12px' }}
           >
             {investigation?.case_decision ? 'Update Case Decision' : 'Record Case Decision'}
           </button>
@@ -127,16 +108,16 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
 
       {/* Case Decision Banner if present */}
       {investigation?.case_decision && (
-        <div style={{ backgroundColor: '#0f172a', border: '1px solid #3b82f6', borderRadius: '8px', padding: '14px', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: '#60a5fa' }}>
-              Human Case Decision Recorded: {investigation.case_decision.decision.replace(/_/g, ' ').toUpperCase()}
+        <div className="panel" style={{ padding: '12px 16px', marginBottom: '16px', borderLeft: '4px solid var(--accent-main)', backgroundColor: 'var(--bg-subtle)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+              HUMAN CASE DECISION: {investigation.case_decision.decision.replace(/_/g, ' ').toUpperCase()}
             </span>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
               Decided by {investigation.case_decision.decided_by} at {investigation.case_decision.decided_at.slice(0, 19)}
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1' }}>
+          <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--text-main)' }}>
             <strong>Note:</strong> {investigation.case_decision.outcome_note}
           </p>
         </div>
@@ -146,20 +127,20 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
       {decisionModalOpen && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+          backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', padding: '24px', width: '500px', maxWidth: '90%' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#f8fafc' }}>Record Final Case Decision</h3>
-            <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px', lineHeight: '1.4' }}>
+          <div className="panel" style={{ padding: '20px', width: '480px', maxWidth: '90%', backgroundColor: 'var(--bg-panel)' }}>
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: '700', color: 'var(--text-main)' }}>Record Final Case Decision</h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px', lineHeight: '1.4' }}>
               The system operates in advisory mode. You may choose to rely on, partially rely on, or completely disregard the automated findings.
             </p>
 
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '6px' }}>Decision Choice:</label>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Decision Choice:</label>
               <select
                 value={caseDecisionType}
                 onChange={(e) => setCaseDecisionType(e.target.value as CaseDecisionType)}
-                style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#fff', fontSize: '13px' }}
+                style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-panel)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '12px', fontFamily: 'var(--font-sans)' }}
               >
                 <option value="rely_on_tool_output">Rely on Tool Output</option>
                 <option value="partially_rely">Partially Rely on Output</option>
@@ -168,42 +149,38 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
               </select>
             </div>
 
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '6px' }}>Investigator ID / Name:</label>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Investigator ID / Name:</label>
               <input
                 type="text"
                 value={decidedBy}
                 onChange={(e) => setDecidedBy(e.target.value)}
-                style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-panel)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '12px', boxSizing: 'border-box', fontFamily: 'var(--font-sans)' }}
               />
             </div>
 
-            <div style={{ marginBottom: '18px' }}>
-              <label style={{ display: 'block', fontSize: '12px', color: '#cbd5e1', marginBottom: '6px' }}>Investigator Outcome Note (Mandatory):</label>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase' }}>Investigator Outcome Note (Mandatory):</label>
               <textarea
                 rows={3}
                 placeholder="Explain the reasoning behind the final case determination..."
                 value={outcomeNote}
                 onChange={(e) => setOutcomeNote(e.target.value)}
-                style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '6px 8px', backgroundColor: 'var(--bg-panel)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-main)', fontSize: '12px', boxSizing: 'border-box', fontFamily: 'var(--font-sans)' }}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setDecisionModalOpen(false)}
-                style={{ backgroundColor: 'transparent', border: '1px solid #475569', color: '#cbd5e1', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                className="btn-action"
               >
                 Cancel
               </button>
               <button
                 disabled={submittingDecision || !outcomeNote.trim()}
                 onClick={handleRecordCaseDecision}
-                style={{
-                  backgroundColor: '#16a34a', border: 'none', color: '#fff', padding: '6px 14px', borderRadius: '4px',
-                  fontWeight: '600', cursor: submittingDecision || !outcomeNote.trim() ? 'not-allowed' : 'pointer', fontSize: '12px',
-                  opacity: !outcomeNote.trim() ? 0.5 : 1
-                }}
+                className="btn-action btn-accent"
               >
                 Submit Decision
               </button>
@@ -214,19 +191,17 @@ export const FindingsView: React.FC<FindingsViewProps> = ({
 
       {findings.length === 0 ? (
         <div
+          className="panel"
           style={{
-            backgroundColor: '#1e293b',
-            border: '1px solid #064e3b',
-            borderRadius: '8px',
-            padding: '40px',
+            padding: '36px',
             textAlign: 'center',
-            color: '#34d399',
+            color: 'var(--text-muted)',
           }}
         >
-          <div style={{ fontSize: '16px', fontWeight: '700', marginBottom: '8px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '700', marginBottom: '6px', color: 'var(--text-main)' }}>
             Zero Inconsistencies or Anomalies Detected
           </div>
-          <div style={{ fontSize: '13px', color: '#94a3b8' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             All internal mathematical checks, entity correlations, and cross-document fields match cleanly.
           </div>
         </div>

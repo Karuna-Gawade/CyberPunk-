@@ -4,35 +4,29 @@ export const AdvisoryBanner: React.FC = () => {
   return (
     <div
       style={{
-        backgroundColor: '#f59e0b',
-        color: '#78350f',
-        padding: '10px 16px',
-        fontWeight: '700',
-        fontSize: '13px',
+        backgroundColor: '#0F172A',
+        color: '#F8FAFC',
+        padding: '6px 16px',
+        fontWeight: '600',
+        fontSize: '11px',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: '8px',
-        borderBottom: '2px solid #d97706',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid var(--border-color)',
         letterSpacing: '0.02em',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        fontFamily: 'var(--font-mono)',
+        userSelect: 'none',
       }}
     >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-      <span>Advisory output. Final decision rests with the human reviewer.</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ color: '#F59E0B', fontWeight: 'bold' }}>[ADVISORY NOTICE]</span>
+        <span>Advisory output. Final decision rests with the human reviewer.</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: '#94A3B8' }}>
+        <span>ISO/IEC 27037 ALIGNED</span>
+        <span>•</span>
+        <span style={{ color: '#34D399', fontWeight: '600' }}>SHA-256 AUDIT LEDGER</span>
+      </div>
     </div>
   );
 };
