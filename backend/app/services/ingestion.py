@@ -1,0 +1,250 @@
+"""
+Document ingestion, integrity verification, and processing pipeline coordinator.
+Ensures pristine read-only file preservation, SHA-256 calculation, and robust error recovery:
+corrupt/encrypted/unsupported files fail gracefully without aborting bundle processing.
+"""
+
+import hashlib
+import os
+import shutil
+import stat
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+import fitz  # PyMuPDF
+from backend.app.db.storage import StorageManager
+from backend.app.models.contracts import (
+    DocumentRecord,
+    DocumentStatus,
+    DocumentType,
+    ExtractedField,
+)
+from backend.app.services.audit import AuditService
+from backend.app.services.classification import classify_document_text
+from backend.app.services.extraction.aadhaar_qr import extract_qr_from_image
+from backend.app.services.extraction.field_parser import parse_document_fields
+from backend.app.services.extraction.tesseract_ocr import run_tesseract_on_image
+from backend.app.services.extraction.text_layer import extract_pdf_text_layer
+from backend.app.services.render import render_document_pages
+from backend.app.services.tesseract_cli import find_tesseract_binary
+
+
+def compute_sha256(file_path: Path) -> str:
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+class IngestionService:
+    def __init__(self, storage: StorageManager, audit: AuditService):
+        self.storage = storage
+        self.audit = audit
+
+    def ingest_file(
+        self,
+        investigation_id: str,
+        doc_id: str,
+        source_path: Path,
+        original_filename: str,
+    ) -> DocumentRecord:
+        """
+        Ingests a document file into pristine read-only storage and creates database record.
+        """
+        # Calculate SHA-256
+        sha256_hash = compute_sha256(source_path)
+
+        # Store pristine copy in originals
+        dest_filename = f"{doc_id}_{original_filename}"
+        dest_path = self.storage.originals_dir / dest_filename
+        shutil.copy2(source_path, dest_path)
+
+        # Set read-only permissions on pristine original
+        try:
+            os.chmod(dest_path, stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
+        except Exception:
+            pass
+
+        # Create Document record
+        doc = DocumentRecord(
+            doc_id=doc_id,
+            filename=original_filename,
+            sha256=sha256_hash,
+            type=DocumentType.UNSUPPORTED,
+            type_confidence=0.0,
+            pages=1,
+            render_dpi=150,
+            status=DocumentStatus.UPLOADED,
+        )
+
+        self.storage.save_document(investigation_id, doc, str(dest_path))
+
+        # Log audit event
+        self.audit.log_event(
+            investigation_id=investigation_id,
+            actor="system",
+            action="document_ingested",
+            object_id=doc_id,
+            details={
+                "filename": original_filename,
+                "sha256": sha256_hash,
+                "bytes": source_path.stat().st_size,
+            },
+        )
+
+        return doc
+
+    def process_document(
+        self,
+        investigation_id: str,
+        doc_id: str,
+    ) -> DocumentRecord:
+        """
+        Executes full extraction pipeline on a single document:
+        1. Encryption / corruption check
+        2. 150 DPI page rendering
+        3. Text extraction (vector PDF text layer or Tesseract OCR)
+        4. QR detection (Aadhaar/PAN)
+        5. Classification
+        6. Structured field parsing
+        """
+        doc = self.storage.get_document(doc_id)
+        if not doc:
+            raise ValueError(f"Document {doc_id} not found.")
+
+        file_path = self.storage.get_document_file_path(doc_id)
+        if not file_path or not file_path.exists():
+            doc.status = DocumentStatus.ERROR
+            doc.error_message = "File not found on storage."
+            self.storage.save_document(investigation_id, doc, str(file_path or ""))
+            return doc
+
+        doc.status = DocumentStatus.PROCESSING
+        self.storage.save_document(investigation_id, doc, str(file_path))
+
+        # Check for encrypted / password protected or corrupt PDF
+        suffix = file_path.suffix.lower()
+        if suffix == ".pdf":
+            try:
+                pdf_doc = fitz.open(file_path)
+                if pdf_doc.is_encrypted:
+                    pdf_doc.close()
+                    doc.status = DocumentStatus.ENCRYPTED
+                    doc.error_message = "Document is encrypted/password-protected. Cannot extract without password."
+                    self.storage.save_document(investigation_id, doc, str(file_path))
+                    self.audit.log_event(investigation_id, "system", "document_encrypted", doc_id)
+                    return doc
+                doc.pages = len(pdf_doc)
+                pdf_doc.close()
+            except Exception as e:
+                doc.status = DocumentStatus.ERROR
+                doc.error_message = f"Corrupt PDF file: {str(e)}"
+                self.storage.save_document(investigation_id, doc, str(file_path))
+                self.audit.log_event(investigation_id, "system", "document_corrupt", doc_id, {"error": str(e)})
+                return doc
+
+        # 1. Render pages to fixed 150 DPI PNGs
+        doc_render_dir = self.storage.rendered_dir / doc_id
+        try:
+            rendered_pages = render_document_pages(file_path, doc_render_dir, target_dpi=150)
+            doc.pages = len(rendered_pages)
+        except Exception as e:
+            doc.status = DocumentStatus.ERROR
+            doc.error_message = f"Failed rendering pages: {str(e)}"
+            self.storage.save_document(investigation_id, doc, str(file_path))
+            return doc
+
+        # 2. Extract text (PDF text layer first, fallback to Tesseract)
+        pages_data: List[Dict] = []
+        is_digital_pdf = False
+
+        if suffix == ".pdf":
+            try:
+                pages_data = extract_pdf_text_layer(file_path)
+                # Check if text layer contains meaningful text
+                total_text_len = sum(len(p.get("full_text", "").strip()) for p in pages_data)
+                if total_text_len > 20:
+                    is_digital_pdf = True
+            except Exception:
+                pages_data = []
+
+        # If not digital PDF or text layer is sparse: run Tesseract CLI on rendered images
+        if not is_digital_pdf:
+            tesseract_bin = find_tesseract_binary()
+            if not tesseract_bin:
+                # OCR unavailable state
+                doc.status = DocumentStatus.OCR_FAILED
+                doc.error_message = "OCR engine unavailable; scanned image cannot be processed."
+                self.storage.save_document(investigation_id, doc, str(file_path))
+                return doc
+
+            pages_data = []
+            for p_num, img_path in enumerate(rendered_pages, start=1):
+                ocr_words = run_tesseract_on_image(img_path, psm=6)
+                if ocr_words is None:
+                    # Specific page failed OCR
+                    doc.status = DocumentStatus.OCR_FAILED
+                    doc.error_message = f"OCR failed on page {p_num}."
+                    self.storage.save_document(investigation_id, doc, str(file_path))
+                    return doc
+
+                full_page_text = " ".join(w["text"] for w in ocr_words)
+                pages_data.append({
+                    "page": p_num,
+                    "full_text": full_page_text,
+                    "words": ocr_words,
+                    "spans": [],
+                })
+
+        # 3. Detect QR code on Page 1
+        page1_img = rendered_pages[0] if rendered_pages else None
+        qr_data = None
+        qr_box = None
+        if page1_img:
+            qr_data, qr_box, is_undecodable = extract_qr_from_image(page1_img)
+            if is_undecodable:
+                # Undecodable QR detected
+                self.audit.log_event(
+                    investigation_id,
+                    "system",
+                    "qr_undecodable",
+                    doc_id,
+                    {"detail": "QR code detected on page 1 but could not be decoded. Unable to assess."},
+                )
+
+        # 4. Classify document
+        combined_text = "\n".join(p.get("full_text", "") for p in pages_data)
+        doc_type, type_confidence = classify_document_text(combined_text)
+
+        doc.type = doc_type
+        doc.type_confidence = type_confidence
+
+        if doc_type == DocumentType.UNSUPPORTED:
+            doc.status = DocumentStatus.UNSUPPORTED
+            doc.error_message = "Unsupported document type, manual review required."
+            self.storage.save_document(investigation_id, doc, str(file_path))
+            self.audit.log_event(investigation_id, "system", "document_unsupported", doc_id)
+            return doc
+
+        # 5. Extract structured fields
+        fields = parse_document_fields(doc_id, doc_type, pages_data, qr_data, qr_box)
+        self.storage.save_fields(fields)
+        doc.fields = fields
+        doc.status = DocumentStatus.PROCESSED
+        self.storage.save_document(investigation_id, doc, str(file_path))
+
+        # Log completion
+        self.audit.log_event(
+            investigation_id,
+            "system",
+            "document_processed",
+            doc_id,
+            {
+                "type": doc.type.value,
+                "confidence": doc.type_confidence,
+                "fields_extracted": len(fields),
+                "source": "text_layer" if is_digital_pdf else "ocr",
+            },
+        )
+
+        return doc
