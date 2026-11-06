@@ -9,6 +9,9 @@ class DocumentType(str, Enum):
     PAN = "pan"
     SALARY_SLIP = "salary_slip"
     BANK_STATEMENT = "bank_statement"
+    LOAN_APPLICATION = "loan_application"
+    DECLARATION_15G = "declaration_15g"
+    PAYMENT_INSTRUCTION = "payment_instruction"
     UNSUPPORTED = "unsupported"
 
 
