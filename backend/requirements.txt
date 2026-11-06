@@ -1,0 +1,49 @@
+# ============================================================
+# backend/requirements.txt
+# AI Document Forensics and Contextual Intelligence System
+# Python >= 3.11 required
+#
+# NOTE: Versions below are minimum bounds (>=) to ensure
+# compatibility with Python 3.14+. Pinned exact versions
+# (e.g. from the Dockerfile) only work on Python <=3.12
+# because PyMuPDF 1.24.x has no wheel for Python 3.14 and
+# requires Visual Studio to build from source on Windows.
+# ============================================================
+
+# --- Web framework & server ---
+fastapi>=0.115.0
+uvicorn>=0.30.6
+
+# --- Data validation ---
+pydantic>=2.9.2
+
+# --- PDF processing (PyMuPDF) ---
+# Imported as `fitz`; provides text-layer extraction, font/span inspection,
+# page rendering, and QR-region cropping.
+# 1.24.10 has no wheel for Python 3.14 — use >= so pip selects a compatible wheel.
+pymupdf>=1.24.10
+
+# --- Image processing ---
+# Headless build: no GUI dependencies (suitable for Docker / server use).
+# Used for ELA, QR detection (OpenCV QR decoder), page rendering analysis.
+opencv-python-headless>=4.10.0.84
+
+# --- Numerical computing ---
+numpy>=2.0.0
+
+# --- PDF report generation ---
+# Used by the dossier service (ReportLab platypus / PLATYPUS layout engine).
+reportlab>=4.2.0
+
+# --- Multipart file uploads ---
+# Required for FastAPI File(...) / UploadFile endpoints.
+python-multipart>=0.0.12
+
+# --- Testing ---
+pytest>=8.0.0
+
+# ============================================================
+# stdlib-only (no extra install needed):
+#   csv, hashlib, io, json, os, pathlib, re, shutil,
+#   sqlite3, stat, subprocess, tempfile, typing, uuid, zlib
+# ============================================================
