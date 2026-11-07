@@ -200,3 +200,43 @@ def test_ingestion_fallback_when_tesseract_unavailable(monkeypatch, tmp_path):
     assert processed_doc.status in (DocumentStatus.PROCESSED, DocumentStatus.UNSUPPORTED)
     assert len(processed_doc.fields) > 0
 
+
+def test_mock_id_card_extraction_without_tesseract_cli(monkeypatch, tmp_path):
+    """
+    Simulates Netlify / serverless host where Tesseract binary is NOT installed.
+    Verifies that PyMuPDF built-in OCR extracts real document text (not just filename fallback).
+    """
+    from backend.app.models.contracts import DocumentStatus, Investigation
+    from backend.app.services.ingestion import IngestionService
+    from backend.app.db.storage import StorageManager
+    from backend.app.services.audit import AuditService
+
+    sample_path = Path("data/originals/DOC-56324C_synthetic_mock_id_card.png")
+    if not sample_path.exists():
+        return
+
+    # Simulate missing Tesseract CLI on serverless
+    monkeypatch.setattr("backend.app.services.ingestion.find_tesseract_binary", lambda: None)
+
+    storage = StorageManager(tmp_path / "app.db", tmp_path / "data")
+    audit = AuditService(tmp_path / "app.db")
+    service = IngestionService(storage, audit)
+
+    inv = Investigation(investigation_id="INV-TEST-MOCK", created_at="2026-11-07T15:20:00")
+    storage.create_investigation(inv)
+    service.ingest_file("INV-TEST-MOCK", "DOC-MOCK-1", sample_path, "synthetic_mock_id_card.png")
+
+    processed_doc = service.process_document("INV-TEST-MOCK", "DOC-MOCK-1")
+
+    assert processed_doc.status != DocumentStatus.OCR_FAILED
+    # Must extract real fields from the mock ID card
+    assert len(processed_doc.fields) >= 8, f"Expected >= 8 fields, got {len(processed_doc.fields)}"
+
+    field_dict = {f.name: str(f.value) for f in processed_doc.fields}
+    field_text = " ".join([str(f.value) for f in processed_doc.fields])
+
+    # Must contain real content from the mock ID card image
+    assert "TEST USER ALPHA" in field_text or "USER" in field_text
+    assert any(f.name.startswith("line_") for f in processed_doc.fields)
+
+

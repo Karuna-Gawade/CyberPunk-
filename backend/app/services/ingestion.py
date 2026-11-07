@@ -198,7 +198,15 @@ class IngestionService:
                 if tesseract_bin:
                     ocr_words = run_tesseract_on_image(img_path, psm=6)
 
-                # 2. Attempt Gemini Vision OCR if Tesseract unavailable or returned no text
+                # 2. Attempt PyMuPDF built-in OCR (runs in-process, zero external CLI dependencies)
+                if not ocr_words:
+                    try:
+                        from backend.app.services.extraction.tesseract_ocr import run_pymupdf_ocr_on_image
+                        ocr_words = run_pymupdf_ocr_on_image(img_path)
+                    except Exception:
+                        ocr_words = None
+
+                # 3. Attempt Gemini Vision OCR if Tesseract/PyMuPDF unavailable or returned no text
                 if (not ocr_words) and (llm_api_key or os.environ.get("GEMINI_API_KEY")):
                     try:
                         from backend.app.services.extraction.vision_ocr import run_gemini_vision_ocr
@@ -206,7 +214,7 @@ class IngestionService:
                     except Exception:
                         ocr_words = None
 
-                # 3. Fallback for serverless hosts without Tesseract CLI or API keys:
+                # 4. Fallback for serverless hosts without any OCR engines or API keys:
                 # Recover document tokens from filename, visual bounds, and format signals
                 if not ocr_words:
                     clean_name = file_path.stem.replace("_", " ").replace("-", " ")

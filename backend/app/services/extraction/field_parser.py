@@ -42,10 +42,10 @@ def merge_bboxes(boxes: List[BBox]) -> BBox:
     if not boxes:
         return [0, 0, 0, 0]
     return [
-        min(b[0] for b in boxes),
-        min(b[1] for b in boxes),
-        max(b[2] for b in boxes),
-        max(b[3] for b in boxes),
+        int(round(min(b[0] for b in boxes))),
+        int(round(min(b[1] for b in boxes))),
+        int(round(max(b[2] for b in boxes))),
+        int(round(max(b[3] for b in boxes))),
     ]
 
 
@@ -984,7 +984,7 @@ def extract_all_text_lines(doc_id: str, pages_data: List[Dict[str, Any]]) -> Lis
                         confidence=avg_conf,
                         source=src,
                         page=page_num,
-                        bbox=line["bbox"],
+                        bbox=[int(round(c)) for c in line["bbox"]],
                     )
                 )
                 global_line_idx += 1
@@ -1077,7 +1077,7 @@ def extract_generic_key_values(doc_id: str, pages_data: List[Dict[str, Any]]) ->
                             confidence=avg_conf,
                             source=src,
                             page=page_num,
-                            bbox=line["bbox"],
+                            bbox=[int(round(c)) for c in line["bbox"]],
                         )
                     )
         else:
