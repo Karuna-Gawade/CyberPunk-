@@ -35,7 +35,7 @@ def preprocess_image_for_ocr(img: np.ndarray) -> np.ndarray:
     Applies standard OpenCV preprocessing:
     1. Grayscale conversion
     2. Mild Gaussian blur denoising
-    3. Otsu / adaptive thresholding
+    3. Otsu thresholding
     """
     if len(img.shape) == 3:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -45,10 +45,8 @@ def preprocess_image_for_ocr(img: np.ndarray) -> np.ndarray:
     # Denoise
     denoised = cv2.GaussianBlur(gray, (3, 3), 0)
 
-    # Adaptive binarization
-    thresh = cv2.adaptiveThreshold(
-        denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-    )
+    # Otsu binarization
+    _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return thresh
 
 
@@ -99,6 +97,7 @@ def run_tesseract_on_image(
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Runs Tesseract CLI on an image and returns parsed word boxes at 150 DPI.
+    Operates at 300 DPI for high OCR fidelity and normalizes to 150 DPI geometry.
     Returns None if Tesseract is unavailable or execution fails.
     """
     binary = find_tesseract_binary()
@@ -110,39 +109,57 @@ def run_tesseract_on_image(
         if img is None:
             return None
 
-        # Preprocess
-        processed = preprocess_image_for_ocr(img)
+        # Upscale 2x to 300 DPI for high-accuracy Tesseract OCR
+        # (Since image_path is at 150 DPI standard, 2x upscale matches the 0.5 scale factor)
+        h, w = img.shape[:2]
+        img_300 = cv2.resize(img, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_in:
-            tmp_in_path = Path(tmp_in.name)
+        def _execute_ocr(image_mat: np.ndarray) -> Optional[List[Dict[str, Any]]]:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_in:
+                tmp_in_path = Path(tmp_in.name)
 
-        try:
-            cv2.imwrite(str(tmp_in_path), processed)
+            try:
+                cv2.imwrite(str(tmp_in_path), image_mat)
 
-            cmd = [
-                binary,
-                str(tmp_in_path),
-                "stdout",
-                "--psm",
-                str(psm),
-                "-l",
-                lang,
-                "tsv",
-            ]
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=timeout_sec,
-            )
-            if proc.returncode != 0:
-                return None
+                cmd = [
+                    binary,
+                    str(tmp_in_path),
+                    "stdout",
+                    "--psm",
+                    str(psm),
+                    "-l",
+                    lang,
+                    "tsv",
+                ]
+                proc = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_sec,
+                )
+                if proc.returncode != 0:
+                    return None
 
-            return parse_tesseract_tsv(proc.stdout)
-        finally:
-            if tmp_in_path.exists():
-                tmp_in_path.unlink()
+                return parse_tesseract_tsv(proc.stdout)
+            finally:
+                if tmp_in_path.exists():
+                    tmp_in_path.unlink()
+
+        # Attempt 1: Direct clean image at 300 DPI (preserves thin/faint/colored fonts)
+        words = _execute_ocr(img_300)
+        if words and len(words) >= 5:
+            return words
+
+        # Attempt 2: Fallback to preprocessed image (Otsu thresholding for noisy/dark scans)
+        processed = preprocess_image_for_ocr(img_300)
+        pre_words = _execute_ocr(processed)
+        if pre_words and len(pre_words) > (len(words) if words else 0):
+            return pre_words
+
+        return words if words is not None else []
 
     except Exception:
         return None

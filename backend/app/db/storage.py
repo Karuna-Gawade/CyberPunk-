@@ -62,9 +62,25 @@ class StorageManager:
                     render_dpi INTEGER NOT NULL,
                     status TEXT NOT NULL,
                     error_message TEXT,
+                    llm_type TEXT,
+                    llm_accuracy REAL,
+                    llm_reasoning TEXT,
+                    llm_provider TEXT,
                     FOREIGN KEY (investigation_id) REFERENCES investigations(investigation_id)
                 )
             """)
+            # Auto-migrate documents table columns if upgrading
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(documents)")
+            existing_cols = [c[1] for c in cursor.fetchall()]
+            for col_name, col_type in [
+                ("llm_type", "TEXT"),
+                ("llm_accuracy", "REAL"),
+                ("llm_reasoning", "TEXT"),
+                ("llm_provider", "TEXT"),
+            ]:
+                if col_name not in existing_cols:
+                    conn.execute(f"ALTER TABLE documents ADD COLUMN {col_name} {col_type}")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS fields (
                     field_id TEXT PRIMARY KEY,
@@ -146,12 +162,27 @@ class StorageManager:
                 case_decision=decision,
             )
 
+    def list_investigations(self) -> List[Investigation]:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT investigation_id FROM investigations ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            invs = []
+            for r in rows:
+                inv = self.get_investigation(r[0])
+                if inv:
+                    invs.append(inv)
+            return invs
+
     def save_document(self, investigation_id: str, doc: DocumentRecord, file_path: str):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO documents (doc_id, investigation_id, filename, file_path, sha256, type, type_confidence, pages, render_dpi, status, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO documents (
+                    doc_id, investigation_id, filename, file_path, sha256, type, type_confidence,
+                    pages, render_dpi, status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc.doc_id,
@@ -165,6 +196,10 @@ class StorageManager:
                     doc.render_dpi,
                     doc.status.value,
                     doc.error_message,
+                    doc.llm_type.value if doc.llm_type else None,
+                    doc.llm_accuracy,
+                    doc.llm_reasoning,
+                    doc.llm_provider,
                 ),
             )
             conn.commit()
@@ -173,7 +208,11 @@ class StorageManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT doc_id, filename, sha256, type, type_confidence, pages, render_dpi, status, error_message FROM documents WHERE investigation_id = ?",
+                """
+                SELECT doc_id, filename, sha256, type, type_confidence, pages, render_dpi,
+                       status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider
+                FROM documents WHERE investigation_id = ?
+                """,
                 (investigation_id,),
             )
             rows = cursor.fetchall()
@@ -181,6 +220,12 @@ class StorageManager:
             for r in rows:
                 doc_id = r[0]
                 fields = self.get_fields(doc_id)
+                llm_t = None
+                if r[9]:
+                    try:
+                        llm_t = DocumentType(r[9])
+                    except ValueError:
+                        llm_t = None
                 docs.append(
                     DocumentRecord(
                         doc_id=doc_id,
@@ -192,6 +237,10 @@ class StorageManager:
                         render_dpi=r[6],
                         status=DocumentStatus(r[7]),
                         error_message=r[8],
+                        llm_type=llm_t,
+                        llm_accuracy=r[10],
+                        llm_reasoning=r[11],
+                        llm_provider=r[12],
                         fields=fields,
                     )
                 )
@@ -201,13 +250,23 @@ class StorageManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT doc_id, filename, sha256, type, type_confidence, pages, render_dpi, status, error_message FROM documents WHERE doc_id = ?",
+                """
+                SELECT doc_id, filename, sha256, type, type_confidence, pages, render_dpi,
+                       status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider
+                FROM documents WHERE doc_id = ?
+                """,
                 (doc_id,),
             )
             r = cursor.fetchone()
             if not r:
                 return None
             fields = self.get_fields(doc_id)
+            llm_t = None
+            if r[9]:
+                try:
+                    llm_t = DocumentType(r[9])
+                except ValueError:
+                    llm_t = None
             return DocumentRecord(
                 doc_id=r[0],
                 filename=r[1],
@@ -218,6 +277,10 @@ class StorageManager:
                 render_dpi=r[6],
                 status=DocumentStatus(r[7]),
                 error_message=r[8],
+                llm_type=llm_t,
+                llm_accuracy=r[10],
+                llm_reasoning=r[11],
+                llm_provider=r[12],
                 fields=fields,
             )
 
@@ -227,6 +290,13 @@ class StorageManager:
             cursor.execute("SELECT file_path FROM documents WHERE doc_id = ?", (doc_id,))
             r = cursor.fetchone()
             return Path(r[0]) if r else None
+
+    def get_investigation_id_for_document(self, doc_id: str) -> Optional[str]:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT investigation_id FROM documents WHERE doc_id = ?", (doc_id,))
+            r = cursor.fetchone()
+            return r[0] if r else None
 
     def save_fields(self, fields: List[ExtractedField]):
         with sqlite3.connect(self.db_path) as conn:

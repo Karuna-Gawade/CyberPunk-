@@ -29,6 +29,8 @@ from backend.app.services.forensics.pdf_native import (
     check_font_inconsistencies,
     check_hidden_text_spans,
     check_text_layer_vs_ocr_diff,
+    check_signature_region,
+    check_baseline_alignment,
 )
 from backend.app.services.forensics.image_forensics import run_image_forensics_checks
 from pathlib import Path
@@ -64,7 +66,13 @@ def execute_forensics_checks(
         if text_spans and ocr_words:
             findings.extend(check_text_layer_vs_ocr_diff(text_spans, ocr_words, doc.doc_id, page_num=1))
 
-    # 6. Image forensics (weak supporting signal)
+        # 6. Signature presence and field overlap check
+        findings.extend(check_signature_region(doc_file_path, doc.doc_id, rendered_pages, doc.fields))
+
+        # 7. Baseline alignment disparity check
+        findings.extend(check_baseline_alignment(doc_file_path, doc.doc_id))
+
+    # 8. Image forensics (weak supporting signal)
     if rendered_pages:
         img_findings = run_image_forensics_checks(rendered_pages[0], doc.doc_id, page_num=1)
         findings.extend(img_findings)

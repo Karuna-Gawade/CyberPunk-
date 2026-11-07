@@ -23,6 +23,9 @@ MANDATORY_FIELDS = {
     DocumentType.PAN: ["pan_number", "name", "dob"],
     DocumentType.SALARY_SLIP: ["employee_name", "net_pay", "gross"],
     DocumentType.BANK_STATEMENT: ["account_holder", "account_number", "period"],
+    DocumentType.LOAN_APPLICATION: ["name", "declared_monthly_income", "loan_amount"],
+    DocumentType.DECLARATION_15G: ["name", "pan_number", "estimated_annual_income"],
+    DocumentType.PAYMENT_INSTRUCTION: ["name", "amount", "beneficiary_name"],
 }
 
 
@@ -101,6 +104,41 @@ def validate_within_document_structure(
                     title=f"Misplaced layout position for '{f.name}'",
                     evidence=[EvidenceItem(doc_id=doc_id, field_id=f.field_id, page=f.page, bbox=f.bbox)],
                     signals=["misplaced_field_layout"],
+                )
+            )
+
+    # 4. Numeric validity checks for loan and payment instructions
+    if doc_type == DocumentType.LOAN_APPLICATION:
+        la_field = next((f for f in fields if f.name == "loan_amount"), None)
+        if la_field and (la_field.value is None or float(la_field.value or 0) <= 0):
+            results.append(
+                RuleResult(
+                    rule_id="loan_amount_invalid",
+                    result=RuleStatus.FAIL,
+                    field_ids_used=[la_field.field_id],
+                    detail=f"Loan amount must be a positive non-zero value, but found '{la_field.value}'.",
+                    tier=FindingTier.OBSERVATION,
+                    strength=FindingStrength.WEAK,
+                    title="Loan amount missing or non-positive",
+                    evidence=[EvidenceItem(doc_id=doc_id, field_id=la_field.field_id, page=la_field.page, bbox=la_field.bbox)],
+                    signals=["invalid_loan_amount"],
+                )
+            )
+
+    if doc_type == DocumentType.PAYMENT_INSTRUCTION:
+        amt_field = next((f for f in fields if f.name == "amount"), None)
+        if amt_field and (amt_field.value is None or float(amt_field.value or 0) <= 0):
+            results.append(
+                RuleResult(
+                    rule_id="payment_amount_invalid",
+                    result=RuleStatus.FAIL,
+                    field_ids_used=[amt_field.field_id],
+                    detail=f"Payment transfer amount must be a positive non-zero value, but found '{amt_field.value}'.",
+                    tier=FindingTier.OBSERVATION,
+                    strength=FindingStrength.WEAK,
+                    title="Payment instruction amount missing or non-positive",
+                    evidence=[EvidenceItem(doc_id=doc_id, field_id=amt_field.field_id, page=amt_field.page, bbox=amt_field.bbox)],
+                    signals=["invalid_payment_amount"],
                 )
             )
 

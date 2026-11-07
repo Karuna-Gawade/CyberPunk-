@@ -100,6 +100,54 @@ EXPLANATION_TEMPLATES: Dict[str, Dict[str, str]] = {
         "why_it_matters": "Error Level Analysis highlights compression rate inconsistencies, which can indicate modified image regions, but may also stem from normal re-compression.",
         "next_steps": "Treat as weak supporting indicator; require corroborating document math or font discrepancies before concluding manual tampering.",
     },
+    "loan_income_vs_salary": {
+        "why_it_matters": "Loan underwriting relies on verified payroll data; a discrepancy between declared income and gross payroll earnings undermines affordability assessments.",
+        "next_steps": "Cross-reference employer payroll tax filings (Form 16/26AS) or bank account statements to establish verified recurring monthly compensation.",
+    },
+    "loan_pan_mismatch": {
+        "why_it_matters": "Tax identification numbers on loan applications must match government identity cards to ensure proper credit bureau inquiry and KYC validation.",
+        "next_steps": "Verify PAN card authenticity on the Income Tax Department e-filing portal and request clarification from the applicant.",
+    },
+    "loan_dob_mismatch": {
+        "why_it_matters": "Date of birth discrepancy between application documentation and official identity records introduces identity ambiguity.",
+        "next_steps": "Review physical government identity cards or municipal birth certificate to determine correct legal date of birth.",
+    },
+    "g15_income_vs_salary": {
+        "why_it_matters": "Form 15G is a statutory self-declaration for tax exemption; understating estimated annual income below demonstrated salary earnings constitutes a compliance anomaly.",
+        "next_steps": "Examine the assessee's prior year tax returns (ITR-V) and annual information statements (AIS) to evaluate tax deduction eligibility.",
+    },
+    "g15_pan_mismatch": {
+        "why_it_matters": "Statutory self-declarations under Section 197A require the correct taxpayer identification number to link TDS exemption claims to the correct tax ledger.",
+        "next_steps": "Verify active PAN records on the NSDL database and obtain a rectified declaration form if clerical error occurred.",
+    },
+    "payment_amount_not_in_bank": {
+        "why_it_matters": "Fund transfer instructions must correspond to executed transaction debits in the associated bank account ledger to prove remittance.",
+        "next_steps": "Verify whether the payment was rejected, reversed, pending clearance, or executed via an alternate bank account.",
+    },
+    "payment_account_mismatch": {
+        "why_it_matters": "Payment orders citing accounts that differ from submitted bank account statements indicate either third-party remittance or disconnected records.",
+        "next_steps": "Obtain bank statements for the specific funding account cited in the payment instruction.",
+    },
+    "payment_amount_invalid": {
+        "why_it_matters": "Payment instructions require positive monetary values to constitute a valid financial transfer order.",
+        "next_steps": "Inspect the original instruction form to determine whether the transfer amount was omitted or corrupted during document preparation.",
+    },
+    "loan_amount_invalid": {
+        "why_it_matters": "Loan application forms require a clearly stated, positive principal borrowing amount for credit risk appraisal.",
+        "next_steps": "Request a complete application form with all required numeric loan request fields populated.",
+    },
+    "signature_region_empty": {
+        "why_it_matters": "Formal declaration and application forms require physical or digital signature execution to establish legal validity.",
+        "next_steps": "Inspect the physical document or request a properly executed signed copy from the customer.",
+    },
+    "signature_placement_overlap": {
+        "why_it_matters": "Signatures intersecting or obscuring extracted data values can indicate manual cut-and-paste manipulation or obscure critical terms.",
+        "next_steps": "Review original document under magnification to confirm whether signature was digitally overlaid or naturally executed.",
+    },
+    "baseline_alignment_anomaly": {
+        "why_it_matters": "Word spans sharing a logical line with irregular vertical baseline displacement suggest non-native text splicing or localized patching.",
+        "next_steps": "Inspect vector PDF structure and high-resolution scan magnification to verify typographic flow.",
+    },
 }
 
 

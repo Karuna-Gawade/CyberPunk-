@@ -114,6 +114,13 @@ export const FindingCard: React.FC<FindingCardProps> = ({ finding, onSelectEvide
         {finding.explanation}
       </p>
 
+      {/* Related converging findings */}
+      {finding.related_finding_ids && finding.related_finding_ids.length > 0 && (
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px', fontFamily: 'var(--font-mono)', padding: '4px 8px', background: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '4px' }}>
+          <strong>Related findings:</strong> {finding.related_finding_ids.join(', ')}
+        </div>
+      )}
+
       {/* Reviewer details if already reviewed */}
       {finding.reviewer?.decision && (
         <div style={{ marginBottom: '10px', padding: '6px 10px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '4px', fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>

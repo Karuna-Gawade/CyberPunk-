@@ -3,6 +3,9 @@ export type DocumentType =
   | 'pan'
   | 'salary_slip'
   | 'bank_statement'
+  | 'loan_application'
+  | 'declaration_15g'
+  | 'payment_instruction'
   | 'unsupported';
 
 export type DocumentStatus =
@@ -63,6 +66,10 @@ export interface DocumentRecord {
   sha256: string;
   type: DocumentType;
   type_confidence: number;
+  llm_type?: DocumentType | null;
+  llm_accuracy?: number | null;
+  llm_reasoning?: string | null;
+  llm_provider?: string | null;
   pages: number;
   render_dpi: number;
   status: DocumentStatus;
@@ -98,6 +105,7 @@ export interface Finding {
   status: FindingStatus;
   explanation: string;
   reviewer: ReviewerAction;
+  related_finding_ids?: string[];
 }
 
 export interface PriorityBreakdownItem {

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CrossDocComparisonField, BBox } from '../types';
-
-const API_BASE = 'http://localhost:8000';
+import { API_BASE } from '../api/client';
 
 interface CrossDocumentViewProps {
   investigationId: string;

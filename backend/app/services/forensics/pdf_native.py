@@ -371,3 +371,191 @@ def check_text_layer_vs_ocr_diff(
                 )
 
     return findings
+
+
+def check_signature_region(
+    doc_path: Path,
+    doc_id: str,
+    rendered_pages: List[Path],
+    fields: Optional[List[Any]] = None,
+) -> List[Finding]:
+    """
+    Checks for the presence of signature stroke pixels in the region below
+    'signature' or 'authorised signatory' labels.
+    - If empty: emits 'signature_region_empty' observation.
+    - If signature overlaps an extracted data field: emits 'signature_placement_overlap'.
+    NOTE: Does not compare signature shape/biometrics.
+    """
+    findings = []
+    if not rendered_pages:
+        return findings
+
+    try:
+        import cv2
+        import numpy as np
+
+        doc = fitz.open(doc_path)
+        for page_idx in range(len(doc)):
+            if page_idx >= len(rendered_pages):
+                break
+            page = doc[page_idx]
+            page_dict = page.get_text("dict")
+            img_path = rendered_pages[page_idx]
+            if not img_path.exists():
+                continue
+
+            gray_img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+            if gray_img is None:
+                continue
+            img_h, img_w = gray_img.shape
+
+            for block in page_dict.get("blocks", []):
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span["text"].strip().lower()
+                        if any(term in text for term in ["signature", "authorised signatory", "authorized signatory"]):
+                            pt_box = span["bbox"]
+                            sig_pt_box = (
+                                pt_box[0],
+                                pt_box[3],
+                                max(pt_box[2], pt_box[0] + 120),
+                                pt_box[3] + 50,
+                            )
+                            sig_150 = points_to_150_dpi(sig_pt_box)
+                            x0 = max(0, min(sig_150[0], img_w - 1))
+                            y0 = max(0, min(sig_150[1], img_h - 1))
+                            x1 = max(0, min(sig_150[2], img_w))
+                            y1 = max(0, min(sig_150[3], img_h))
+
+                            if x1 <= x0 + 10 or y1 <= y0 + 10:
+                                continue
+
+                            crop = gray_img[y0:y1, x0:x1]
+                            dark_pixels = np.sum(crop < 180)
+                            total_pixels = crop.size
+                            dark_ratio = (dark_pixels / total_pixels) if total_pixels > 0 else 0.0
+
+                            if dark_ratio < 0.002:
+                                findings.append(
+                                    Finding(
+                                        finding_id=f"ANM-SIG-EMPTY-{doc_id}-{page_idx + 1}-{x0}",
+                                        tier=FindingTier.OBSERVATION,
+                                        category=FindingCategory.FORENSIC,
+                                        rule_id="signature_region_empty",
+                                        title=f"Signature region below '{span['text'].strip()}' appears unexecuted / empty",
+                                        evidence=[EvidenceItem(doc_id=doc_id, page=page_idx + 1, bbox=[x0, y0, x1, y1], label="Unsigned Signature Area")],
+                                        signals=["signature_region_empty"],
+                                        strength=FindingStrength.WEAK,
+                                        confidence=0.85,
+                                        status=FindingStatus.REQUIRES_INVESTIGATION,
+                                        explanation=(
+                                            f"Signature region below '{span['text'].strip()}' contains no visible ink or stroke marks "
+                                            f"(stroke pixel density: {dark_ratio:.2%})."
+                                        ),
+                                        reviewer=ReviewerAction(),
+                                    )
+                                )
+                            elif fields and dark_ratio >= 0.005:
+                                for f in fields:
+                                    if getattr(f, "page", 1) == page_idx + 1 and getattr(f, "name", "") not in ("purpose", "address"):
+                                        fx0, fy0, fx1, fy1 = getattr(f, "bbox", [0, 0, 0, 0])
+                                        x_ov = max(0, min(x1, fx1) - max(x0, fx0))
+                                        y_ov = max(0, min(y1, fy1) - max(y0, fy0))
+                                        if x_ov > 15 and y_ov > 10:
+                                            findings.append(
+                                                Finding(
+                                                    finding_id=f"ANM-SIG-OVERLAP-{doc_id}-{page_idx + 1}-{f.name}",
+                                                    tier=FindingTier.OBSERVATION,
+                                                    category=FindingCategory.FORENSIC,
+                                                    rule_id="signature_placement_overlap",
+                                                    title=f"Signature stroke placement overlaps data field '{f.name}'",
+                                                    evidence=[
+                                                        EvidenceItem(doc_id=doc_id, page=page_idx + 1, bbox=[x0, y0, x1, y1], label="Signature Region"),
+                                                        EvidenceItem(doc_id=doc_id, field_id=f.field_id, page=f.page, bbox=f.bbox, label=f"Overlapped Field: {f.name}"),
+                                                    ],
+                                                    signals=["signature_placement_overlap"],
+                                                    strength=FindingStrength.WEAK,
+                                                    confidence=0.82,
+                                                    status=FindingStatus.REQUIRES_INVESTIGATION,
+                                                    explanation=f"Signature mark intersects coordinate bounding box of extracted data field '{f.name}'.",
+                                                    reviewer=ReviewerAction(),
+                                                )
+                                            )
+                                            break
+
+        doc.close()
+    except Exception:
+        pass
+
+    return findings
+
+
+def check_baseline_alignment(doc_path: Path, doc_id: str) -> List[Finding]:
+    """
+    Inspects text line spans to identify irregular vertical baseline displacements.
+    Spans that share a logical line with > 3pt baseline disparity indicate potential text splicing.
+    Emits at most one finding per line.
+    """
+    findings = []
+    try:
+        doc = fitz.open(doc_path)
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            page_dict = page.get_text("dict")
+
+            # Collect all valid text spans on the page
+            page_spans = []
+            for block in page_dict.get("blocks", []):
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        txt = span.get("text", "").strip()
+                        if txt and len(txt) >= 2:
+                            origin = span.get("origin")
+                            by = origin[1] if origin else span.get("bbox", [0, 0, 0, 0])[3]
+                            page_spans.append((by, span))
+
+            # Sort spans by vertical coordinate, then horizontal
+            page_spans.sort(key=lambda item: (item[1]["bbox"][1], item[1]["bbox"][0]))
+
+            found_anomaly = False
+            for i in range(len(page_spans) - 1):
+                b1_y, s1 = page_spans[i]
+                b2_y, s2 = page_spans[i + 1]
+                y_diff = abs(s1["bbox"][1] - s2["bbox"][1])
+                # Spans on the same visual horizontal band (< 8pt) and within reasonable horizontal proximity
+                h_gap = s2["bbox"][0] - s1["bbox"][2]
+                if y_diff < 8 and (-10 <= h_gap < 80):
+                    diff = abs(b1_y - b2_y)
+                    line_h = max(s1.get("size", 10), s2.get("size", 10))
+
+                    if 3.0 < diff < (line_h * 1.5):
+                        pt_box = s2["bbox"]
+                        bbox_150 = points_to_150_dpi(pt_box)
+                        findings.append(
+                            Finding(
+                                finding_id=f"ANM-BASE-{doc_id}-{page_idx + 1}-{bbox_150[0]}",
+                                tier=FindingTier.OBSERVATION,
+                                category=FindingCategory.FORENSIC,
+                                rule_id="baseline_alignment_anomaly",
+                                title=f"Baseline alignment irregularity ({diff:.1f}pt) on row '{s1['text'][:15]}...'",
+                                evidence=[EvidenceItem(doc_id=doc_id, page=page_idx + 1, bbox=bbox_150, label="Misaligned Span Baseline")],
+                                signals=["baseline_alignment_anomaly"],
+                                strength=FindingStrength.WEAK,
+                                confidence=0.80,
+                                status=FindingStatus.REQUIRES_INVESTIGATION,
+                                explanation=(
+                                    f"Neighboring spans '{s1['text'][:20]}' and '{s2['text'][:20]}' share a visual row "
+                                    f"but exhibit a vertical baseline displacement of {diff:.1f}pt."
+                                ),
+                                reviewer=ReviewerAction(),
+                            )
+                        )
+                        found_anomaly = True
+                        if len(findings) >= 5:
+                            break
+
+        doc.close()
+    except Exception:
+        pass
+
+    return findings

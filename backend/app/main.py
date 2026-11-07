@@ -3,6 +3,11 @@ Main FastAPI Application for PS-2 AI Document Forensics System.
 Advisory output. Final decision rests with the human reviewer.
 """
 
+from dotenv import load_dotenv
+
+# Load optional .env variables (e.g. GEMINI_API_KEY, GROQ_API_KEY)
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.models.contracts import CapabilitiesReport, CapabilityStatus
@@ -46,7 +51,22 @@ def get_capabilities() -> CapabilitiesReport:
         CapabilityStatus(
             feature="Document Classification",
             status="implemented",
-            detail="Heuristic + regex + layout classification for Aadhaar, PAN, Salary Slip, Bank Statement.",
+            detail="Two-stage classifier: TF-IDF + XGBoost ML engine with heuristic + regex fallback for Aadhaar, PAN, Salary Slip, Bank Statement, Loan Application, Form 15G, Payment Instruction.",
+        ),
+        CapabilityStatus(
+            feature="XGBoost ML Document Classifier",
+            status="implemented",
+            detail="Offline-trained supervised gradient boosted decision trees over n-gram TF-IDF vectors; automatic cold-start fallback.",
+        ),
+        CapabilityStatus(
+            feature="Multi-Format Ingestion",
+            status="implemented",
+            detail="Full pipeline support for PDF, DOCX, XLSX, PNG, JPG, JPEG, TIFF, BMP, and WebP with 150 DPI rendering.",
+        ),
+        CapabilityStatus(
+            feature="Signature Presence & Alignment Forensics",
+            status="implemented",
+            detail="Visual stroke density verification in execution zones and span baseline displacement analysis.",
         ),
         CapabilityStatus(
             feature="PDF Text-Layer Extraction",

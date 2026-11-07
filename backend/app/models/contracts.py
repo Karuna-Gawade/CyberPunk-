@@ -105,6 +105,10 @@ class DocumentRecord(BaseModel):
     sha256: str
     type: DocumentType = DocumentType.UNSUPPORTED
     type_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    llm_type: Optional[DocumentType] = None
+    llm_accuracy: Optional[float] = None
+    llm_reasoning: Optional[str] = None
+    llm_provider: Optional[str] = None
     pages: int = 1
     render_dpi: int = 150
     status: DocumentStatus = DocumentStatus.UPLOADED
@@ -140,6 +144,7 @@ class Finding(BaseModel):
     status: FindingStatus = FindingStatus.REQUIRES_INVESTIGATION
     explanation: str = ""
     reviewer: ReviewerAction = Field(default_factory=ReviewerAction)
+    related_finding_ids: List[str] = []
 
 
 class PriorityBreakdownItem(BaseModel):

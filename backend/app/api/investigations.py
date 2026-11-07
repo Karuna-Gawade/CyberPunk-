@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from backend.app.db.storage import StorageManager
 from backend.app.models.contracts import (
@@ -44,6 +44,12 @@ storage_mgr = StorageManager(DB_PATH, DATA_DIR)
 audit_service = AuditService(DB_PATH)
 ingestion_service = IngestionService(storage_mgr, audit_service)
 
+ACCEPTED_SUFFIXES = {
+    ".pdf", ".png", ".jpg", ".jpeg",
+    ".docx", ".xlsx", ".xls",
+    ".tiff", ".tif", ".bmp", ".webp"
+}
+
 router = APIRouter(tags=["investigations"])
 
 
@@ -65,6 +71,12 @@ def create_investigation():
     return inv
 
 
+@router.get("/investigations", response_model=List[Investigation])
+def list_investigations():
+    """Returns all investigations in descending order of creation."""
+    return storage_mgr.list_investigations()
+
+
 @router.get("/investigations/{inv_id}", response_model=Investigation)
 def get_investigation(inv_id: str):
     inv = storage_mgr.get_investigation(inv_id)
@@ -84,8 +96,13 @@ async def upload_documents(
 
     ingested_docs = []
     for file in files:
+        suffix = Path(file.filename or "file.pdf").suffix.lower()
+        if suffix not in ACCEPTED_SUFFIXES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unsupported file format '{suffix}'. Supported formats: {', '.join(sorted(ACCEPTED_SUFFIXES))}",
+            )
         doc_id = f"DOC-{uuid.uuid4().hex[:6].upper()}"
-        suffix = Path(file.filename or "file.pdf").suffix
 
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp_path = Path(tmp.name)
@@ -108,14 +125,14 @@ async def upload_documents(
 
 
 @router.post("/investigations/{inv_id}/process", response_model=Investigation)
-def process_investigation(inv_id: str):
+def process_investigation(inv_id: str, x_llm_api_key: Optional[str] = Header(None)):
     inv = storage_mgr.get_investigation(inv_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Investigation not found")
 
     docs = storage_mgr.get_documents(inv_id)
     for doc in docs:
-        ingestion_service.process_document(inv_id, doc.doc_id)
+        ingestion_service.process_document(inv_id, doc.doc_id, llm_api_key=x_llm_api_key)
 
     # Re-fetch processed documents with extracted fields
     updated_docs = storage_mgr.get_documents(inv_id)
@@ -454,3 +471,81 @@ def download_dossier(inv_id: str):
         media_type="application/pdf",
         filename=f"dossier_{inv_id}.pdf",
     )
+
+
+class _LlmClassifyRequest(_PydanticBase):
+    api_key: Optional[str] = None
+    provider: Optional[str] = "auto"
+
+
+@router.post("/documents/{doc_id}/classify-llm", response_model=DocumentRecord)
+def classify_document_llm(doc_id: str, body: Optional[_LlmClassifyRequest] = None):
+    """
+    Classifies a specific document using an LLM (Gemini, Groq, or Local Semantic Engine).
+    Updates and returns the document with classification type, accuracy score, and explanatory reasoning.
+    """
+    doc = storage_mgr.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = storage_mgr.get_document_file_path(doc_id)
+    inv_id = storage_mgr.get_investigation_id_for_document(doc_id) or "GLOBAL"
+
+    text = ""
+    if file_path and file_path.exists():
+        suffix = file_path.suffix.lower()
+        if suffix == ".pdf":
+            from backend.app.services.extraction.text_layer import extract_pdf_text_layer
+            pages = extract_pdf_text_layer(file_path)
+            text = "\n".join(p.get("full_text", "") for p in pages)
+        elif suffix == ".docx":
+            from backend.app.services.extraction.office_text import extract_docx_text
+            pages = extract_docx_text(file_path)
+            text = "\n".join(p.get("full_text", "") for p in pages)
+        elif suffix in (".xlsx", ".xls"):
+            from backend.app.services.extraction.office_text import extract_xlsx_text
+            pages = extract_xlsx_text(file_path)
+            text = "\n".join(p.get("full_text", "") for p in pages)
+
+    if not text.strip():
+        # Fallback to fields text
+        fields = storage_mgr.get_fields(doc_id)
+        text = " ".join(f"{f.name}: {f.value}" for f in fields)
+
+    api_key = body.api_key if body else None
+    provider = body.provider if body else "auto"
+
+    from backend.app.services.llm_classification import classify_document_with_llm
+    llm_res = classify_document_with_llm(text, api_key=api_key, provider=provider)
+
+    doc.llm_type = llm_res.classification_type
+    doc.llm_accuracy = llm_res.accuracy
+    doc.llm_reasoning = llm_res.reasoning
+    doc.llm_provider = llm_res.provider
+
+    # Also update primary type if primary was unsupported but LLM confidence is high
+    if doc.type == DocumentType.UNSUPPORTED and llm_res.classification_type != DocumentType.UNSUPPORTED and llm_res.accuracy >= 0.85:
+        doc.type = llm_res.classification_type
+        doc.type_confidence = llm_res.accuracy
+        doc.status = DocumentStatus.PROCESSED
+        doc.error_message = None
+
+    storage_mgr.save_document(inv_id, doc, str(file_path or ""))
+    return doc
+
+
+@router.post("/investigations/{inv_id}/classify-llm", response_model=Investigation)
+def classify_investigation_documents_llm(inv_id: str, body: Optional[_LlmClassifyRequest] = None):
+    """
+    Runs LLM classification across all documents in an investigation.
+    """
+    inv = storage_mgr.get_investigation(inv_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+
+    docs = storage_mgr.get_documents(inv_id)
+    for doc in docs:
+        classify_document_llm(doc.doc_id, body=body)
+
+    return storage_mgr.get_investigation(inv_id)
+

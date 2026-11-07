@@ -1,10 +1,44 @@
 import { DocumentRecord, ExtractedField, Finding, Investigation, CapabilitiesReport, ReviewDecision, CaseDecisionType, AuditEvent } from '../types';
 
-const API_BASE = 'http://localhost:8000';
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:8000';
 
 export async function createInvestigation(): Promise<Investigation> {
   const res = await fetch(`${API_BASE}/investigations`, { method: 'POST' });
   if (!res.ok) throw new Error('Failed to create investigation');
+  return res.json();
+}
+
+export async function listInvestigations(): Promise<Investigation[]> {
+  const res = await fetch(`${API_BASE}/investigations`);
+  if (!res.ok) throw new Error('Failed to list investigations');
+  return res.json();
+}
+
+export async function classifyDocumentWithLlm(
+  docId: string,
+  apiKey?: string,
+  provider: string = 'auto',
+): Promise<DocumentRecord> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/classify-llm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: apiKey || null, provider }),
+  });
+  if (!res.ok) throw new Error('Failed to classify document with LLM');
+  return res.json();
+}
+
+export async function classifyInvestigationWithLlm(
+  invId: string,
+  apiKey?: string,
+  provider: string = 'auto',
+): Promise<Investigation> {
+  const res = await fetch(`${API_BASE}/investigations/${invId}/classify-llm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: apiKey || null, provider }),
+  });
+  if (!res.ok) throw new Error('Failed to classify investigation with LLM');
   return res.json();
 }
 
@@ -21,9 +55,23 @@ export async function uploadDocuments(invId: string, files: File[]): Promise<Doc
   return res.json();
 }
 
+export function getStoredLlmApiKey(): string {
+  return localStorage.getItem('llm_api_key') || '';
+}
+
+export function setStoredLlmApiKey(key: string): void {
+  localStorage.setItem('llm_api_key', key);
+}
+
 export async function processInvestigation(invId: string): Promise<Investigation> {
+  const apiKey = getStoredLlmApiKey();
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers['x-llm-api-key'] = apiKey;
+  }
   const res = await fetch(`${API_BASE}/investigations/${invId}/process`, {
     method: 'POST',
+    headers,
   });
   if (!res.ok) throw new Error('Failed to process investigation');
   return res.json();

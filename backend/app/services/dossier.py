@@ -33,9 +33,12 @@ from reportlab.platypus import (
 from backend.app.models.contracts import (
     AuditEvent,
     Finding,
+    FindingCategory,
     FindingTier,
     Investigation,
 )
+from backend.app.services.explanation import generate_investigation_summary
+from backend.app.services.pii import mask_field_value
 
 
 # ---------------------------------------------------------------------------
@@ -267,188 +270,284 @@ def generate_dossier(
     elements.append(summary_table)
     elements.append(Spacer(1, 10))
 
-    # ---- Documents List ----
-    elements.append(Paragraph("Documents Submitted", style_heading))
-    for d in investigation.documents:
-        elements.append(
-            Paragraph(
-                f"<b>{d.filename}</b> — Type: {d.type.value}, Status: {d.status.value}, "
-                f"SHA-256: {d.sha256[:16]}..., Pages: {d.pages}",
-                style_body,
-            )
+    # -------------------------------------------------------------
+    # 7.1 Document Overview
+    # -------------------------------------------------------------
+    elements.append(Paragraph("7.1 Document Overview", style_heading))
+    if investigation.documents:
+        doc_table_data = [["Doc ID", "Filename", "Type", "Pages", "SHA-256", "Status"]]
+        for d in investigation.documents:
+            doc_table_data.append([
+                Paragraph(d.doc_id, style_small),
+                Paragraph(_truncate(d.filename, 28), style_small),
+                Paragraph(d.type.value, style_small),
+                Paragraph(str(d.pages), style_small),
+                Paragraph(f"{d.sha256[:16]}...", style_small),
+                Paragraph(d.status.value, style_small),
+            ])
+        doc_table = Table(doc_table_data, colWidths=[24 * mm, 44 * mm, 34 * mm, 14 * mm, 36 * mm, 23 * mm])
+        doc_table.setStyle(
+            TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ])
         )
-    elements.append(Spacer(1, 8))
-
-    # ---- Findings ----
-    elements.append(Paragraph(f"Findings ({len(findings)})", style_heading))
-
-    if not findings:
-        elements.append(
-            Paragraph(
-                "No inconsistencies or anomalies detected by deterministic rules.",
-                style_body,
-            )
-        )
+        elements.append(doc_table)
     else:
-        # Group by tier
+        elements.append(Paragraph("No documents submitted.", style_body))
+    elements.append(Spacer(1, 10))
+
+    # -------------------------------------------------------------
+    # 7.2 Extracted Information
+    # -------------------------------------------------------------
+    elements.append(Paragraph("7.2 Extracted Information", style_heading))
+    has_any_fields = any(d.fields for d in investigation.documents)
+    if not has_any_fields:
+        elements.append(Paragraph("No structured fields extracted from documents.", style_body))
+    else:
+        for d in investigation.documents:
+            elements.append(
+                Paragraph(
+                    f"<b>{d.filename}</b> ({d.doc_id}) — <i>{d.type.value}</i>",
+                    ParagraphStyle("DocSubHeading", parent=styles["Normal"], fontSize=9, fontName="Helvetica-Bold", spaceBefore=4, spaceAfter=2),
+                )
+            )
+            if not d.fields:
+                elements.append(Paragraph("No structured fields extracted.", style_small))
+                elements.append(Spacer(1, 4))
+                continue
+
+            field_rows = [["Field", "Value (PII-Masked)", "Conf.", "Source", "Pg", "BBox"]]
+            for f in d.fields:
+                val_str = str(f.value)
+                if f.name in ("aadhaar_number", "pan_number"):
+                    val_str = mask_field_value(f.name, val_str)
+                field_rows.append([
+                    Paragraph(f.name, style_small),
+                    Paragraph(_truncate(val_str, 40), style_small),
+                    Paragraph(f"{f.confidence:.0%}", style_small),
+                    Paragraph(f.source.value if hasattr(f.source, "value") else str(f.source), style_small),
+                    Paragraph(str(f.page), style_small),
+                    Paragraph(str(f.bbox), style_small),
+                ])
+            f_table = Table(field_rows, colWidths=[36 * mm, 60 * mm, 16 * mm, 18 * mm, 12 * mm, 33 * mm])
+            f_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ])
+            )
+            elements.append(f_table)
+            elements.append(Spacer(1, 6))
+
+    elements.append(Spacer(1, 6))
+
+    # Helper to render a group of findings
+    def _render_findings_block(group_findings: List[Finding], empty_msg: str):
+        if not group_findings:
+            elements.append(Paragraph(empty_msg, style_body))
+            elements.append(Spacer(1, 6))
+            return
+
         tier_order = [
             FindingTier.POTENTIAL_MANIPULATION,
             FindingTier.INCONSISTENCY,
             FindingTier.OBSERVATION,
         ]
         for tier in tier_order:
-            tier_findings = [f for f in findings if f.tier == tier]
-            if not tier_findings:
+            tf = [f for f in group_findings if f.tier == tier]
+            if not tf:
                 continue
 
             elements.append(
                 Paragraph(
-                    f"{_tier_label(tier)} ({len(tier_findings)})",
+                    f"{_tier_label(tier)} ({len(tf)})",
                     ParagraphStyle(
                         "TierSub",
                         parent=styles["Heading3"],
-                        fontSize=11,
+                        fontSize=10,
                         textColor=colors.HexColor("#475569"),
-                        spaceBefore=8,
-                        spaceAfter=4,
+                        spaceBefore=6,
+                        spaceAfter=3,
                     ),
                 )
             )
 
-            for f in tier_findings:
-                # Finding card
-                finding_data = [
+            for f in tf:
+                card_data = [
                     [
                         Paragraph(f"<b>{f.title}</b>", style_body),
                         Paragraph(
-                            f"Rule: {f.rule_id} | Strength: {f.strength.value} | "
-                            f"Confidence: {f.confidence:.0%}",
+                            f"Rule: {f.rule_id} | Strength: {f.strength.value} | Conf: {f.confidence:.0%}",
                             style_small,
                         ),
                     ],
                 ]
-                ft = Table(finding_data, colWidths=[120 * mm, 55 * mm])
+                ft = Table(card_data, colWidths=[120 * mm, 55 * mm])
                 ft.setStyle(
-                    TableStyle(
-                        [
-                            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-                            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
-                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                            ("TOPPADDING", (0, 0), (-1, -1), 4),
-                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                        ]
-                    )
+                    TableStyle([
+                        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ])
                 )
                 elements.append(ft)
+                elements.append(Paragraph(_truncate(f.explanation, 250), style_body))
 
-                # Explanation
-                elements.append(
-                    Paragraph(
-                        _truncate(f.explanation, 300),
-                        style_body,
-                    )
-                )
-
-                # Status
                 status_text = f.status.value.replace("_", " ").title()
                 if f.reviewer.decision:
                     status_text += f" (Reviewer: {f.reviewer.decision.value})"
                     if f.reviewer.reason:
                         status_text += f" — {_truncate(f.reviewer.reason, 60)}"
-                elements.append(
-                    Paragraph(f"<i>Status: {status_text}</i>", style_small)
-                )
+                elements.append(Paragraph(f"<i>Status: {status_text}</i>", style_small))
 
-                # Evidence locations
-                for ev in f.evidence:
-                    ev_text = f"Evidence: {ev.doc_id} page {ev.page} bbox [{', '.join(str(v) for v in ev.bbox)}]"
-                    if ev.label:
-                        ev_text += f" — {ev.label}"
-                    elements.append(Paragraph(ev_text, style_small))
-
-                    # Thumbnail crop
-                    thumb_path = _crop_evidence_thumbnail(
-                        rendered_dir, ev.doc_id, ev.page, ev.bbox
+                if getattr(f, "related_finding_ids", None):
+                    elements.append(
+                        Paragraph(
+                            f"<b>Related findings:</b> {', '.join(f.related_finding_ids)}",
+                            style_small,
+                        )
                     )
-                    if thumb_path and os.path.exists(thumb_path):
-                        try:
-                            img = Image(thumb_path)
-                            # Scale to fit within 150mm wide, max 40mm tall
-                            max_w, max_h = 150 * mm, 40 * mm
-                            iw, ih = img.imageWidth, img.imageHeight
-                            if iw > 0 and ih > 0:
-                                ratio = min(max_w / iw, max_h / ih, 1.0)
-                                img.drawWidth = iw * ratio
-                                img.drawHeight = ih * ratio
-                            elements.append(img)
-                        except Exception:
-                            pass
+                elements.append(Spacer(1, 4))
 
-                elements.append(Spacer(1, 6))
+    # -------------------------------------------------------------
+    # 7.3 Contextual Analysis
+    # -------------------------------------------------------------
+    elements.append(Paragraph("7.3 Contextual Analysis", style_heading))
+    contextual_findings = [
+        f for f in findings
+        if f.category in (FindingCategory.WITHIN_DOCUMENT, FindingCategory.CROSS_DOCUMENT)
+    ]
+    _render_findings_block(
+        contextual_findings,
+        "No within-document or cross-document inconsistencies detected.",
+    )
+    elements.append(Spacer(1, 6))
 
-    # ---- Priority Breakdown ----
+    # -------------------------------------------------------------
+    # 7.4 Visual Forensic Findings
+    # -------------------------------------------------------------
+    elements.append(Paragraph("7.4 Visual Forensic Findings", style_heading))
+    forensic_findings = [
+        f for f in findings
+        if f.category in (FindingCategory.FORENSIC, FindingCategory.INJECTION, FindingCategory.SYSTEM)
+    ]
+    _render_findings_block(
+        forensic_findings,
+        "No visual forensic anomalies, baseline disparities, or injection patterns detected.",
+    )
+    elements.append(Spacer(1, 8))
+
+    # -------------------------------------------------------------
+    # 7.5 Evidence and Traceability
+    # -------------------------------------------------------------
+    elements.append(PageBreak())
+    elements.append(Paragraph("7.5 Evidence and Traceability", style_heading))
+    findings_with_ev = [f for f in findings if f.evidence]
+    if not findings_with_ev:
+        elements.append(Paragraph("No physical or coordinate evidence items flagged.", style_body))
+    else:
+        for f in findings_with_ev:
+            elements.append(
+                Paragraph(
+                    f"<b>{f.finding_id}</b> — {f.title} (Tier: {_tier_label(f.tier)})",
+                    ParagraphStyle("EvFindingTitle", parent=styles["Normal"], fontSize=9, fontName="Helvetica-Bold", spaceBefore=4),
+                )
+            )
+            for ev in f.evidence:
+                ev_text = f"Doc: {ev.doc_id} | Page: {ev.page} | BBox (150 DPI): {ev.bbox}"
+                if ev.label:
+                    ev_text += f" | {ev.label}"
+                elements.append(Paragraph(ev_text, style_small))
+
+                thumb_path = _crop_evidence_thumbnail(rendered_dir, ev.doc_id, ev.page, ev.bbox)
+                if thumb_path and os.path.exists(thumb_path):
+                    try:
+                        img = Image(thumb_path)
+                        max_w, max_h = 150 * mm, 35 * mm
+                        iw, ih = img.imageWidth, img.imageHeight
+                        if iw > 0 and ih > 0:
+                            ratio = min(max_w / iw, max_h / ih, 1.0)
+                            img.drawWidth = iw * ratio
+                            img.drawHeight = ih * ratio
+                        elements.append(img)
+                    except Exception:
+                        pass
+            elements.append(Spacer(1, 6))
+
+    # -------------------------------------------------------------
+    # 7.6 Investigation Summary
+    # -------------------------------------------------------------
+    elements.append(PageBreak())
+    elements.append(Paragraph("7.6 Investigation Summary", style_heading))
+    summary_text = generate_investigation_summary(investigation, findings)
+    for line in summary_text.split("\n"):
+        if line.strip():
+            elements.append(Paragraph(line, style_body))
+        else:
+            elements.append(Spacer(1, 4))
+    elements.append(Spacer(1, 10))
+
+    # ---- Review Priority Breakdown ----
     if investigation.priority_breakdown:
         elements.append(Paragraph("Review Priority Breakdown", style_heading))
         bd_data = [["Rule ID", "Title", "Points", "Tier"]]
         for item in investigation.priority_breakdown:
-            bd_data.append(
-                [
-                    item.rule_id,
-                    _truncate(item.title, 50),
-                    str(item.points),
-                    item.tier.value,
-                ]
-            )
+            bd_data.append([
+                item.rule_id,
+                _truncate(item.title, 50),
+                str(item.points),
+                item.tier.value,
+            ])
         bd_table = Table(bd_data, colWidths=[40 * mm, 70 * mm, 20 * mm, 40 * mm])
         bd_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 3),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ]
-            )
+            TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ])
         )
         elements.append(bd_table)
         elements.append(Spacer(1, 8))
 
     # ---- Audit Trail (tail — last 20 events) ----
-    elements.append(PageBreak())
     elements.append(Paragraph("Audit Trail (latest events)", style_heading))
-
     tail_events = audit_events[-20:] if len(audit_events) > 20 else audit_events
     if tail_events:
         aud_data = [["Seq", "Timestamp", "Actor", "Action", "Object"]]
         for ev in tail_events:
-            aud_data.append(
-                [
-                    str(ev.seq),
-                    ev.timestamp[:19],
-                    ev.actor,
-                    ev.action,
-                    _truncate(ev.object_id, 30),
-                ]
-            )
-        aud_table = Table(
-            aud_data, colWidths=[12 * mm, 38 * mm, 30 * mm, 38 * mm, 50 * mm]
-        )
+            aud_data.append([
+                str(ev.seq),
+                ev.timestamp[:19],
+                ev.actor,
+                ev.action,
+                _truncate(ev.object_id, 30),
+            ])
+        aud_table = Table(aud_data, colWidths=[12 * mm, 38 * mm, 30 * mm, 38 * mm, 50 * mm])
         aud_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 7),
-                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 2),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-                ]
-            )
+            TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ])
         )
         elements.append(aud_table)
     else:

@@ -47,6 +47,18 @@ RULE_POINTS_MATRIX: Dict[str, int] = {
     "ela_discontinuity": 5,
     "missing_mandatory_field": 10,
     "duplicate_conflicting_field": 15,
+    "loan_income_vs_salary": 20,
+    "loan_pan_mismatch": 20,
+    "loan_dob_mismatch": 20,
+    "g15_income_vs_salary": 20,
+    "g15_pan_mismatch": 20,
+    "payment_amount_not_in_bank": 25,
+    "payment_account_mismatch": 10,
+    "payment_amount_invalid": 5,
+    "loan_amount_invalid": 5,
+    "signature_region_empty": 5,
+    "signature_placement_overlap": 10,
+    "baseline_alignment_anomaly": 10,
 }
 
 DEFAULT_POINTS = 10
@@ -84,12 +96,9 @@ class EscalationEngine:
 
         for i in range(len(escalated_list)):
             f1 = escalated_list[i]
-            # Weak signals cannot be escalated by themselves
-            if f1.strength == FindingStrength.WEAK and len(f1.signals) <= 1:
-                continue
-
             converging_signals: Set[str] = set(f1.signals)
             converging_evidence: List[EvidenceItem] = list(f1.evidence)
+            related_ids: Set[str] = set()
 
             for j in range(len(escalated_list)):
                 if i == j:
@@ -109,9 +118,16 @@ class EscalationEngine:
 
                 if has_spatial_convergence:
                     converging_signals.update(f2.signals)
+                    related_ids.add(f2.finding_id)
                     for ev in f2.evidence:
                         if ev not in converging_evidence:
                             converging_evidence.append(ev)
+
+            f1.related_finding_ids = sorted(list(related_ids))
+
+            # Weak signals cannot be escalated by themselves
+            if f1.strength == FindingStrength.WEAK and len(f1.signals) <= 1:
+                continue
 
             # Check convergence rule: >= 2 independent signal types on same region
             if len(converging_signals) >= 2:

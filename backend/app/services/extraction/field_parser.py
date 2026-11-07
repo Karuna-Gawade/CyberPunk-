@@ -11,7 +11,7 @@ Flags low confidence (< 0.60) fields as unable_to_assess.
 """
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from backend.app.models.contracts import (
     DocumentType,
     ExtractedField,
@@ -573,6 +573,545 @@ def extract_bank_statement_fields(doc_id: str, pages_data: List[Dict[str, Any]])
     return fields
 
 
+def extract_loan_application_fields(doc_id: str, pages_data: List[Dict[str, Any]]) -> List[ExtractedField]:
+    fields: List[ExtractedField] = []
+    page1 = pages_data[0] if pages_data else {"words": [], "full_text": ""}
+    full_text = page1.get("full_text", "")
+    words = page1.get("words", [])
+    src = FieldSource.TEXT_LAYER if words and words[0].get("source") == "text_layer" else FieldSource.OCR
+
+    # 1. Applicant Name (as 'name')
+    name_match = re.search(r"(?:Applicant Name|Name)[:\s]+([A-Za-z\s]+)", full_text, re.IGNORECASE)
+    if name_match:
+        name_val = name_match.group(1).split("\n")[0].strip()
+        matched_boxes = [w["bbox"] for w in words if any(n in w["text"] for n in name_val.split())]
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-name",
+                doc_id=doc_id,
+                name="name",
+                value=name_val,
+                raw_text=name_val,
+                confidence=0.92,
+                source=src,
+                page=1,
+                bbox=merge_bboxes(matched_boxes) if matched_boxes else [80, 80, 280, 105],
+            )
+        )
+
+    # 2. DOB
+    dob_match = re.search(r"(?:DOB|Date of Birth)[:\s]+(\d{2}[/-]\d{2}[/-]\d{4})", full_text, re.IGNORECASE)
+    if dob_match:
+        dob_val = dob_match.group(1).strip()
+        matched_boxes = [w["bbox"] for w in words if dob_val in w["text"]]
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-dob",
+                doc_id=doc_id,
+                name="dob",
+                value=dob_val,
+                raw_text=dob_val,
+                confidence=0.94,
+                source=src,
+                page=1,
+                bbox=merge_bboxes(matched_boxes) if matched_boxes else [80, 110, 240, 130],
+            )
+        )
+
+    # 3. PAN
+    pan_match = re.search(r"(?:PAN|PAN Number)[:\s]+([A-Z]{5}[0-9]{4}[A-Z])|\b([A-Z]{5}[0-9]{4}[A-Z])\b", full_text)
+    if pan_match:
+        pan_val = (pan_match.group(1) or pan_match.group(2)).strip()
+        matched_boxes = [w["bbox"] for w in words if pan_val in w["text"]]
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-pan",
+                doc_id=doc_id,
+                name="pan_number",
+                value=pan_val,
+                raw_text=pan_val,
+                confidence=0.95,
+                source=src,
+                page=1,
+                bbox=merge_bboxes(matched_boxes) if matched_boxes else [80, 135, 240, 155],
+            )
+        )
+
+    # 4. Declared Monthly Income
+    income_match = re.search(r"Declared Monthly Income[:\s]+(?:INR\s*)?([0-9,.]+)", full_text, re.IGNORECASE)
+    if income_match:
+        raw_inc = income_match.group(1).strip()
+        num_inc = parse_currency_amount(raw_inc)
+        if num_inc is not None:
+            fields.append(
+                ExtractedField(
+                    field_id=f"F-{doc_id}-declared-monthly-income",
+                    doc_id=doc_id,
+                    name="declared_monthly_income",
+                    value=num_inc,
+                    raw_text=raw_inc,
+                    confidence=0.93,
+                    source=src,
+                    page=1,
+                    bbox=[80, 160, 280, 185],
+                )
+            )
+
+    # 5. Loan Amount
+    loan_match = re.search(r"Loan Amount[:\s]+(?:INR\s*)?([0-9,.]+)", full_text, re.IGNORECASE)
+    if loan_match:
+        raw_loan = loan_match.group(1).strip()
+        num_loan = parse_currency_amount(raw_loan)
+        if num_loan is not None:
+            fields.append(
+                ExtractedField(
+                    field_id=f"F-{doc_id}-loan-amount",
+                    doc_id=doc_id,
+                    name="loan_amount",
+                    value=num_loan,
+                    raw_text=raw_loan,
+                    confidence=0.93,
+                    source=src,
+                    page=1,
+                    bbox=[80, 190, 280, 215],
+                )
+            )
+
+    # 6. Purpose
+    purp_match = re.search(r"Purpose(?: of Loan)?[:\s]+([^\n]+)", full_text, re.IGNORECASE)
+    if purp_match:
+        purp_val = purp_match.group(1).strip()
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-purpose",
+                doc_id=doc_id,
+                name="purpose",
+                value=purp_val,
+                raw_text=purp_val,
+                confidence=0.90,
+                source=src,
+                page=1,
+                bbox=[80, 220, 350, 245],
+            )
+        )
+
+    return fields
+
+
+def extract_declaration_15g_fields(doc_id: str, pages_data: List[Dict[str, Any]]) -> List[ExtractedField]:
+    fields: List[ExtractedField] = []
+    page1 = pages_data[0] if pages_data else {"words": [], "full_text": ""}
+    full_text = page1.get("full_text", "")
+    words = page1.get("words", [])
+    src = FieldSource.TEXT_LAYER if words and words[0].get("source") == "text_layer" else FieldSource.OCR
+
+    # 1. Declarant Name (as 'name')
+    name_match = re.search(r"(?:Declarant Name|Name of Declarant|Name)[:\s]+([A-Za-z\s]+)", full_text, re.IGNORECASE)
+    if name_match:
+        name_val = name_match.group(1).split("\n")[0].strip()
+        matched_boxes = [w["bbox"] for w in words if any(n in w["text"] for n in name_val.split())]
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-name",
+                doc_id=doc_id,
+                name="name",
+                value=name_val,
+                raw_text=name_val,
+                confidence=0.92,
+                source=src,
+                page=1,
+                bbox=merge_bboxes(matched_boxes) if matched_boxes else [80, 80, 280, 105],
+            )
+        )
+
+    # 2. PAN
+    pan_match = re.search(r"(?:PAN|PAN of the Assessee)[:\s]+([A-Z]{5}[0-9]{4}[A-Z])|\b([A-Z]{5}[0-9]{4}[A-Z])\b", full_text)
+    if pan_match:
+        pan_val = (pan_match.group(1) or pan_match.group(2)).strip()
+        matched_boxes = [w["bbox"] for w in words if pan_val in w["text"]]
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-pan",
+                doc_id=doc_id,
+                name="pan_number",
+                value=pan_val,
+                raw_text=pan_val,
+                confidence=0.95,
+                source=src,
+                page=1,
+                bbox=merge_bboxes(matched_boxes) if matched_boxes else [80, 110, 240, 130],
+            )
+        )
+
+    # 3. Financial Year
+    fy_match = re.search(r"Financial Year[:\s]+(\d{4}[-–]\d{2,4})", full_text, re.IGNORECASE)
+    if fy_match:
+        fy_val = fy_match.group(1).strip()
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-financial-year",
+                doc_id=doc_id,
+                name="financial_year",
+                value=fy_val,
+                raw_text=fy_val,
+                confidence=0.93,
+                source=src,
+                page=1,
+                bbox=[80, 135, 240, 155],
+            )
+        )
+
+    # 4. Estimated Annual Income
+    inc_match = re.search(r"Estimated(?: Total)? Annual Income[:\s]+(?:INR\s*)?([0-9,.]+)", full_text, re.IGNORECASE)
+    if inc_match:
+        raw_inc = inc_match.group(1).strip()
+        num_inc = parse_currency_amount(raw_inc)
+        if num_inc is not None:
+            fields.append(
+                ExtractedField(
+                    field_id=f"F-{doc_id}-estimated-annual-income",
+                    doc_id=doc_id,
+                    name="estimated_annual_income",
+                    value=num_inc,
+                    raw_text=raw_inc,
+                    confidence=0.93,
+                    source=src,
+                    page=1,
+                    bbox=[80, 160, 280, 185],
+                )
+            )
+
+    # 5. Declaration Date
+    date_match = re.search(r"(?:Declaration )?Date[:\s]+(\d{2}[/-]\d{2}[/-]\d{4})", full_text, re.IGNORECASE)
+    if date_match:
+        date_val = date_match.group(1).strip()
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-declaration-date",
+                doc_id=doc_id,
+                name="declaration_date",
+                value=date_val,
+                raw_text=date_val,
+                confidence=0.92,
+                source=src,
+                page=1,
+                bbox=[80, 190, 240, 210],
+            )
+        )
+
+    return fields
+
+
+def extract_payment_instruction_fields(doc_id: str, pages_data: List[Dict[str, Any]]) -> List[ExtractedField]:
+    fields: List[ExtractedField] = []
+    page1 = pages_data[0] if pages_data else {"words": [], "full_text": ""}
+    full_text = page1.get("full_text", "")
+    words = page1.get("words", [])
+    src = FieldSource.TEXT_LAYER if words and words[0].get("source") == "text_layer" else FieldSource.OCR
+
+    # 1. Remitter Name (as 'name')
+    remitter_match = re.search(r"(?:Remitter Name|Applicant Name|Name)[:\s]+([A-Za-z\s]+)", full_text, re.IGNORECASE)
+    if remitter_match:
+        name_val = remitter_match.group(1).split("\n")[0].strip()
+        matched_boxes = [w["bbox"] for w in words if any(n in w["text"] for n in name_val.split())]
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-name",
+                doc_id=doc_id,
+                name="name",
+                value=name_val,
+                raw_text=name_val,
+                confidence=0.92,
+                source=src,
+                page=1,
+                bbox=merge_bboxes(matched_boxes) if matched_boxes else [80, 80, 280, 105],
+            )
+        )
+
+    # 2. Account Number
+    acc_match = re.search(r"(?:Remitter )?Account Number[:\s]+([0-9Xx]+)", full_text, re.IGNORECASE)
+    if acc_match:
+        acc_val = acc_match.group(1).strip()
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-account-number",
+                doc_id=doc_id,
+                name="account_number",
+                value=acc_val,
+                raw_text=acc_val,
+                confidence=0.94,
+                source=src,
+                page=1,
+                bbox=[80, 110, 240, 130],
+            )
+        )
+
+    # 3. Beneficiary Name
+    ben_match = re.search(r"Beneficiary Name[:\s]+([A-Za-z\s]+)", full_text, re.IGNORECASE)
+    if ben_match:
+        ben_val = ben_match.group(1).split("\n")[0].strip()
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-beneficiary-name",
+                doc_id=doc_id,
+                name="beneficiary_name",
+                value=ben_val,
+                raw_text=ben_val,
+                confidence=0.92,
+                source=src,
+                page=1,
+                bbox=[80, 135, 280, 155],
+            )
+        )
+
+    # 4. Amount
+    amt_match = re.search(r"(?:Payment )?Amount[:\s]+(?:INR\s*)?([0-9,.]+)", full_text, re.IGNORECASE)
+    if amt_match:
+        raw_amt = amt_match.group(1).strip()
+        num_amt = parse_currency_amount(raw_amt)
+        if num_amt is not None:
+            fields.append(
+                ExtractedField(
+                    field_id=f"F-{doc_id}-amount",
+                    doc_id=doc_id,
+                    name="amount",
+                    value=num_amt,
+                    raw_text=raw_amt,
+                    confidence=0.94,
+                    source=src,
+                    page=1,
+                    bbox=[80, 160, 280, 185],
+                )
+            )
+
+    # 5. Instruction Date
+    date_match = re.search(r"(?:Instruction )?Date[:\s]+(\d{2}[/-]\d{2}[/-]\d{4})", full_text, re.IGNORECASE)
+    if date_match:
+        date_val = date_match.group(1).strip()
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-instruction-date",
+                doc_id=doc_id,
+                name="instruction_date",
+                value=date_val,
+                raw_text=date_val,
+                confidence=0.93,
+                source=src,
+                page=1,
+                bbox=[80, 190, 240, 210],
+            )
+        )
+
+    # 6. Purpose
+    purp_match = re.search(r"Purpose[:\s]+([^\n]+)", full_text, re.IGNORECASE)
+    if purp_match:
+        purp_val = purp_match.group(1).strip()
+        fields.append(
+            ExtractedField(
+                field_id=f"F-{doc_id}-purpose",
+                doc_id=doc_id,
+                name="purpose",
+                value=purp_val,
+                raw_text=purp_val,
+                confidence=0.90,
+                source=src,
+                page=1,
+                bbox=[80, 215, 350, 240],
+            )
+        )
+
+    return fields
+
+
+def extract_all_text_lines(doc_id: str, pages_data: List[Dict[str, Any]]) -> List[ExtractedField]:
+    """
+    Extracts every physical line of text across all pages as an individual ExtractedField.
+    Ensures complete visual traceability and bounding box coverage on the canvas.
+    """
+    fields: List[ExtractedField] = []
+    global_line_idx = 1
+
+    for page_dict in pages_data:
+        page_num = page_dict.get("page", 1)
+        words = page_dict.get("words", [])
+
+        if words:
+            # Cluster words by vertical proximity (visual lines)
+            sorted_words = sorted(words, key=lambda w: (w["bbox"][1] + w["bbox"][3]) / 2)
+            visual_lines: List[Dict[str, Any]] = []
+
+            for w in sorted_words:
+                cy = (w["bbox"][1] + w["bbox"][3]) / 2
+                h = max(10, w["bbox"][3] - w["bbox"][1])
+                assigned = False
+                for line in visual_lines:
+                    line_cy = (line["bbox"][1] + line["bbox"][3]) / 2
+                    line_h = line["bbox"][3] - line["bbox"][1]
+                    if abs(cy - line_cy) < max(h, line_h) * 0.6:
+                        line["words"].append(w)
+                        line["bbox"][0] = min(line["bbox"][0], w["bbox"][0])
+                        line["bbox"][1] = min(line["bbox"][1], w["bbox"][1])
+                        line["bbox"][2] = max(line["bbox"][2], w["bbox"][2])
+                        line["bbox"][3] = max(line["bbox"][3], w["bbox"][3])
+                        assigned = True
+                        break
+                if not assigned:
+                    visual_lines.append({"bbox": list(w["bbox"]), "words": [w]})
+
+            # Sort lines top-to-bottom
+            visual_lines.sort(key=lambda l: (l["bbox"][1] + l["bbox"][3]) / 2)
+
+            for line in visual_lines:
+                line["words"].sort(key=lambda w: w["bbox"][0])
+                line_text = " ".join(w.get("text", "") for w in line["words"]).strip()
+                if not line_text:
+                    continue
+
+                # Filter single non-alphanumeric noise characters
+                if len(line_text) == 1 and not line_text.isalnum():
+                    continue
+
+                avg_conf = round(sum(w.get("confidence", 0.95) for w in line["words"]) / len(line["words"]), 3)
+                src = FieldSource.OCR if any(w.get("source") == "ocr" for w in line["words"]) else FieldSource.TEXT_LAYER
+
+                fields.append(
+                    ExtractedField(
+                        field_id=f"F-{doc_id}-p{page_num}-line-{global_line_idx}",
+                        doc_id=doc_id,
+                        name=f"line_{global_line_idx:02d}",
+                        value=line_text,
+                        raw_text=line_text,
+                        confidence=avg_conf,
+                        source=src,
+                        page=page_num,
+                        bbox=line["bbox"],
+                    )
+                )
+                global_line_idx += 1
+        else:
+            # Fallback for documents without explicit word bounding boxes (e.g. DOCX/XLSX text)
+            full_text = page_dict.get("full_text", "")
+            lines = [l.strip() for l in full_text.splitlines() if l.strip()]
+            for idx, line_text in enumerate(lines, 1):
+                fields.append(
+                    ExtractedField(
+                        field_id=f"F-{doc_id}-p{page_num}-line-{global_line_idx}",
+                        doc_id=doc_id,
+                        name=f"line_{global_line_idx:02d}",
+                        value=line_text,
+                        raw_text=line_text,
+                        confidence=0.98,
+                        source=FieldSource.TEXT_LAYER,
+                        page=page_num,
+                        bbox=[40, 40 + (idx - 1) * 25, 750, 40 + idx * 25],
+                    )
+                )
+                global_line_idx += 1
+
+    return fields
+
+
+def extract_generic_key_values(doc_id: str, pages_data: List[Dict[str, Any]]) -> List[ExtractedField]:
+    """
+    Extracts key-value pairs from semi-structured or unsupported documents
+    (e.g. transaction slips, receipts, declarations, forms) matching patterns like:
+    'Key : Value' or 'Key > Value' or 'Key - Value'.
+    """
+    fields: List[ExtractedField] = []
+    seen_keys: Set[str] = set()
+
+    for page_dict in pages_data:
+        page_num = page_dict.get("page", 1)
+        words = page_dict.get("words", [])
+
+        if words:
+            # Cluster words by vertical proximity into lines
+            sorted_words = sorted(words, key=lambda w: (w["bbox"][1] + w["bbox"][3]) / 2)
+            visual_lines: List[Dict[str, Any]] = []
+
+            for w in sorted_words:
+                cy = (w["bbox"][1] + w["bbox"][3]) / 2
+                h = max(10, w["bbox"][3] - w["bbox"][1])
+                assigned = False
+                for line in visual_lines:
+                    line_cy = (line["bbox"][1] + line["bbox"][3]) / 2
+                    line_h = line["bbox"][3] - line["bbox"][1]
+                    if abs(cy - line_cy) < max(h, line_h) * 0.6:
+                        line["words"].append(w)
+                        line["bbox"][0] = min(line["bbox"][0], w["bbox"][0])
+                        line["bbox"][1] = min(line["bbox"][1], w["bbox"][1])
+                        line["bbox"][2] = max(line["bbox"][2], w["bbox"][2])
+                        line["bbox"][3] = max(line["bbox"][3], w["bbox"][3])
+                        assigned = True
+                        break
+                if not assigned:
+                    visual_lines.append({"bbox": list(w["bbox"]), "words": [w]})
+
+            for line in visual_lines:
+                line["words"].sort(key=lambda w: w["bbox"][0])
+                line_text = " ".join(w.get("text", "") for w in line["words"]).strip()
+                match = re.match(r"^[\s\-\~\|\*]*([A-Za-z][A-Za-z\s]{1,30}?)\s*[:\>\-]\s*([^\n\r]+)$", line_text)
+                if match:
+                    raw_key = match.group(1).strip()
+                    raw_val = match.group(2).strip()
+                    clean_key = re.sub(r"[^a-zA-Z0-9]+", "_", raw_key).strip("_").lower()
+                    if not clean_key or len(clean_key) < 2 or clean_key in seen_keys:
+                        continue
+                    if clean_key in ("note", "page", "total_pages", "confidential"):
+                        continue
+                    clean_val = re.sub(r"[\s\|\~]+$", "", raw_val).strip()
+                    if not clean_val:
+                        continue
+
+                    seen_keys.add(clean_key)
+                    avg_conf = round(sum(w.get("confidence", 0.95) for w in line["words"]) / len(line["words"]), 3)
+                    src = FieldSource.OCR if any(w.get("source") == "ocr" for w in line["words"]) else FieldSource.TEXT_LAYER
+
+                    fields.append(
+                        ExtractedField(
+                            field_id=f"F-{doc_id}-kv-{clean_key}",
+                            doc_id=doc_id,
+                            name=clean_key,
+                            value=clean_val,
+                            raw_text=line_text,
+                            confidence=avg_conf,
+                            source=src,
+                            page=page_num,
+                            bbox=line["bbox"],
+                        )
+                    )
+        else:
+            full_text = page_dict.get("full_text", "")
+            for line_idx, line in enumerate(full_text.splitlines(), 1):
+                match = re.match(r"^[\s\-\~\|\*]*([A-Za-z][A-Za-z\s]{1,30}?)\s*[:\>\-]\s*([^\n\r]+)$", line.strip())
+                if match:
+                    raw_key = match.group(1).strip()
+                    raw_val = match.group(2).strip()
+                    clean_key = re.sub(r"[^a-zA-Z0-9]+", "_", raw_key).strip("_").lower()
+                    if not clean_key or len(clean_key) < 2 or clean_key in seen_keys:
+                        continue
+                    clean_val = re.sub(r"[\s\|\~]+$", "", raw_val).strip()
+                    if not clean_val:
+                        continue
+
+                    seen_keys.add(clean_key)
+                    fields.append(
+                        ExtractedField(
+                            field_id=f"F-{doc_id}-kv-{clean_key}",
+                            doc_id=doc_id,
+                            name=clean_key,
+                            value=clean_val,
+                            raw_text=line.strip(),
+                            confidence=0.95,
+                            source=FieldSource.TEXT_LAYER,
+                            page=page_num,
+                            bbox=[40, 40 + (line_idx - 1) * 25, 750, 40 + line_idx * 25],
+                        )
+                    )
+
+    return fields
+
+
 def parse_document_fields(
     doc_id: str,
     doc_type: DocumentType,
@@ -580,7 +1119,10 @@ def parse_document_fields(
     qr_data: Optional[Dict[str, Any]] = None,
     qr_box: Optional[BBox] = None,
 ) -> List[ExtractedField]:
-    """Routes structured extraction by document type."""
+    """
+    Routes structured extraction by document type, extracts key-values for unsupported documents,
+    and appends complete line-by-line OCR/text-layer lines for full canvas highlightability.
+    """
     if doc_type == DocumentType.AADHAAR:
         fields = extract_aadhaar_fields(doc_id, pages_data, qr_data, qr_box)
     elif doc_type == DocumentType.PAN:
@@ -589,8 +1131,19 @@ def parse_document_fields(
         fields = extract_salary_slip_fields(doc_id, pages_data)
     elif doc_type == DocumentType.BANK_STATEMENT:
         fields = extract_bank_statement_fields(doc_id, pages_data)
+    elif doc_type == DocumentType.LOAN_APPLICATION:
+        fields = extract_loan_application_fields(doc_id, pages_data)
+    elif doc_type == DocumentType.DECLARATION_15G:
+        fields = extract_declaration_15g_fields(doc_id, pages_data)
+    elif doc_type == DocumentType.PAYMENT_INSTRUCTION:
+        fields = extract_payment_instruction_fields(doc_id, pages_data)
     else:
-        fields = []
+        # Unsupported or generic document: extract generic key-values
+        fields = extract_generic_key_values(doc_id, pages_data)
+
+    # Universal text line extraction for EVERY document (supported and unsupported)
+    all_text_lines = extract_all_text_lines(doc_id, pages_data)
+    fields.extend(all_text_lines)
 
     # Apply confidence thresholding: if confidence < CONFIDENCE_THRESHOLD, mark unable_to_assess
     for f in fields:

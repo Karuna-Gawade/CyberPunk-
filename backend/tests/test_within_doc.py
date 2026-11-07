@@ -30,3 +30,29 @@ def test_within_doc_duplicate_conflicting_fields():
     assert dup_rule is not None
     assert dup_rule.result == RuleStatus.FAIL
     assert dup_rule.tier == FindingTier.INCONSISTENCY
+
+
+def test_within_doc_loan_amount_invalid():
+    fields = [
+        ExtractedField(field_id="F1", doc_id="DOC_LOAN", name="name", value="Rajesh Sharma", raw_text="Rajesh Sharma", confidence=0.95, source=FieldSource.TEXT_LAYER, page=1, bbox=[0,0,10,10]),
+        ExtractedField(field_id="F2", doc_id="DOC_LOAN", name="declared_monthly_income", value=85000.0, raw_text="85000", confidence=0.95, source=FieldSource.TEXT_LAYER, page=1, bbox=[0,0,10,10]),
+        ExtractedField(field_id="F3", doc_id="DOC_LOAN", name="loan_amount", value=0.0, raw_text="0", confidence=0.95, source=FieldSource.TEXT_LAYER, page=1, bbox=[0,0,10,10]),
+    ]
+    results = validate_within_document_structure("DOC_LOAN", DocumentType.LOAN_APPLICATION, fields)
+    rule = next((r for r in results if r.rule_id == "loan_amount_invalid"), None)
+    assert rule is not None
+    assert rule.result == RuleStatus.FAIL
+    assert rule.tier == FindingTier.OBSERVATION
+
+
+def test_within_doc_payment_amount_invalid():
+    fields = [
+        ExtractedField(field_id="F1", doc_id="DOC_PAY", name="name", value="Rajesh Sharma", raw_text="Rajesh Sharma", confidence=0.95, source=FieldSource.TEXT_LAYER, page=1, bbox=[0,0,10,10]),
+        ExtractedField(field_id="F2", doc_id="DOC_PAY", name="beneficiary_name", value="Priya Sharma", raw_text="Priya Sharma", confidence=0.95, source=FieldSource.TEXT_LAYER, page=1, bbox=[0,0,10,10]),
+        ExtractedField(field_id="F3", doc_id="DOC_PAY", name="amount", value=-500.0, raw_text="-500", confidence=0.95, source=FieldSource.TEXT_LAYER, page=1, bbox=[0,0,10,10]),
+    ]
+    results = validate_within_document_structure("DOC_PAY", DocumentType.PAYMENT_INSTRUCTION, fields)
+    rule = next((r for r in results if r.rule_id == "payment_amount_invalid"), None)
+    assert rule is not None
+    assert rule.result == RuleStatus.FAIL
+    assert rule.tier == FindingTier.OBSERVATION

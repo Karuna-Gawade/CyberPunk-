@@ -66,5 +66,55 @@
       "statement\\s+of\\s+account"
     ],
     "min_score": 25
+  },
+  "loan_application": {
+    "keywords": [
+      "loan application",
+      "applicant name",
+      "declared monthly income",
+      "loan amount",
+      "purpose of loan",
+      "co-applicant",
+      "repayment tenure"
+    ],
+    "regex": [
+      "loan\\s+amount[:\\s]+[\\d,]+",
+      "declared\\s+(?:monthly|annual)\\s+income"
+    ],
+    "min_score": 25
+  },
+  "declaration_15g": {
+    "keywords": [
+      "form 15g",
+      "15g",
+      "declaration under section 197a",
+      "estimated annual income",
+      "financial year",
+      "tax deduction",
+      "previous year income"
+    ],
+    "regex": [
+      "form\\s+15\\s*[Gg]",
+      "\\b197[Aa]\\b"
+    ],
+    "min_score": 25
+  },
+  "payment_instruction": {
+    "keywords": [
+      "payment instruction",
+      "neft",
+      "rtgs",
+      "fund transfer",
+      "beneficiary name",
+      "beneficiary account",
+      "ifsc code",
+      "instruction date",
+      "remitter"
+    ],
+    "regex": [
+      "neft|rtgs|imps",
+      "beneficiary\\s+account\\s+number"
+    ],
+    "min_score": 25
   }
 }

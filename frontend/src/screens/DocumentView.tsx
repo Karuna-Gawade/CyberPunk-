@@ -31,6 +31,8 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
   const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
   const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<boolean>(false);
+  const [imgDimensions, setImgDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [fieldFilter, setFieldFilter] = useState<'all' | 'entities' | 'lines'>('all');
 
   useEffect(() => {
     if (!currentDocId) return;
@@ -161,6 +163,10 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
             <img
               src={imageUrl}
               alt={`Page ${currentPage}`}
+              onLoad={(e) => {
+                const target = e.currentTarget;
+                setImgDimensions({ width: target.naturalWidth, height: target.naturalHeight });
+              }}
               style={{
                 display: 'block',
                 maxWidth: '100%',
@@ -171,6 +177,7 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
 
             {/* Bounding Box Overlay SVG (2px border, 10% fill, hover flash) */}
             <svg
+              viewBox={imgDimensions ? `0 0 ${imgDimensions.width} ${imgDimensions.height}` : undefined}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -258,6 +265,111 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
           <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>DPI: 150</span>
         </div>
 
+        {/* LLM Document Classification Card */}
+        <div
+          className="panel"
+          style={{
+            margin: '10px 10px 4px 10px',
+            padding: '12px',
+            backgroundColor: 'var(--bg-subtle)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '4px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+              LLM Classification Analysis
+            </span>
+            <span
+              style={{
+                fontSize: '10px',
+                fontWeight: '700',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                backgroundColor: '#0369a1',
+                color: '#ffffff',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {currentDoc.llm_provider || 'Local Semantic Engine'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+            <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>
+              {currentDoc.llm_type ? currentDoc.llm_type.toUpperCase().replace('_', ' ') : currentDoc.type.toUpperCase().replace('_', ' ')}
+            </span>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#10b981', fontFamily: 'var(--font-mono)' }}>
+              {currentDoc.llm_accuracy ? `${(currentDoc.llm_accuracy * 100).toFixed(1)}% Accuracy` : `${(currentDoc.type_confidence * 100).toFixed(1)}% Confidence`}
+            </span>
+          </div>
+
+          {currentDoc.llm_reasoning && (
+            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: '1.45', backgroundColor: 'var(--bg-panel)', padding: '8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontWeight: '600', color: 'var(--text-main)' }}>LLM Rationale: </span>
+              {currentDoc.llm_reasoning}
+            </div>
+          )}
+        </div>
+
+        {/* Filter Segmented Control */}
+        <div style={{ display: 'flex', gap: '6px', margin: '8px 10px 4px 10px' }}>
+          <button
+            type="button"
+            onClick={() => setFieldFilter('all')}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: fieldFilter === 'all' ? 'var(--accent-main)' : 'var(--bg-subtle)',
+              color: fieldFilter === 'all' ? '#ffffff' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: fieldFilter === 'all' ? '700' : '500',
+            }}
+          >
+            All ({pageFields.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFieldFilter('entities')}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: fieldFilter === 'entities' ? 'var(--accent-main)' : 'var(--bg-subtle)',
+              color: fieldFilter === 'entities' ? '#ffffff' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: fieldFilter === 'entities' ? '700' : '500',
+            }}
+          >
+            Entities ({pageFields.filter((f) => !f.name.startsWith('line_') && !f.name.startsWith('text_line_')).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFieldFilter('lines')}
+            style={{
+              flex: 1,
+              padding: '4px 6px',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: fieldFilter === 'lines' ? 'var(--accent-main)' : 'var(--bg-subtle)',
+              color: fieldFilter === 'lines' ? '#ffffff' : 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: fieldFilter === 'lines' ? '700' : '500',
+            }}
+          >
+            OCR Lines ({pageFields.filter((f) => f.name.startsWith('line_') || f.name.startsWith('text_line_')).length})
+          </button>
+        </div>
+
         <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading fields...</div>
@@ -266,87 +378,107 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
               No structured fields extracted on this page.
             </div>
           ) : (
-            pageFields.map((f) => {
-              const displayVal = revealedValues[f.field_id] || (typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value));
-              const isMasked = f.name.includes('aadhaar') || f.name.includes('pan');
-              const isRevealed = Boolean(revealedValues[f.field_id]);
-              const isHovered = hoveredFieldId === f.field_id;
+            (() => {
+              const isLineField = (name: string) => name.startsWith('line_') || name.startsWith('text_line_');
+              const displayed =
+                fieldFilter === 'entities'
+                  ? pageFields.filter((f) => !isLineField(f.name))
+                  : fieldFilter === 'lines'
+                  ? pageFields.filter((f) => isLineField(f.name))
+                  : pageFields;
 
-              return (
-                <div
-                  key={f.field_id}
-                  onMouseEnter={() => setHoveredFieldId(f.field_id)}
-                  onMouseLeave={() => setHoveredFieldId(null)}
-                  className="panel"
-                  style={{
-                    backgroundColor: isHovered ? 'var(--bg-subtle)' : 'var(--bg-panel)',
-                    borderColor: isHovered ? 'var(--text-muted)' : 'var(--border-color)',
-                    padding: '8px 10px',
-                    marginBottom: '6px',
-                    transition: 'border-color 0.15s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-main)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
-                      {f.name.replace(/_/g, ' ')}
-                    </span>
-                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <span
-                        style={{
-                          fontSize: '9.5px',
-                          backgroundColor: 'var(--bg-subtle)',
-                          color: 'var(--text-muted)',
-                          padding: '1px 4px',
-                          borderRadius: '3px',
-                          border: '1px solid var(--border-color)',
-                          fontFamily: 'var(--font-mono)',
-                        }}
-                      >
-                        {f.source}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '9.5px',
-                          fontWeight: '700',
-                          backgroundColor: f.confidence >= 0.85 ? 'var(--bg-subtle)' : 'var(--bg-subtle)',
-                          color: f.confidence >= 0.85 ? '#059669' : 'var(--tier-incons)',
-                          border: '1px solid var(--border-color)',
-                          padding: '1px 4px',
-                          borderRadius: '3px',
-                          fontFamily: 'var(--font-mono)',
-                        }}
-                      >
-                        {(f.confidence * 100).toFixed(0)}%
-                      </span>
-                    </div>
+              if (displayed.length === 0) {
+                return (
+                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                    No fields match the selected filter.
                   </div>
+                );
+              }
 
-                  <div style={{ fontSize: '12.5px', color: 'var(--text-main)', wordBreak: 'break-word', marginTop: '2px', fontFamily: 'var(--font-mono)' }}>
-                    {f.unable_to_assess ? (
-                      <span style={{ color: 'var(--tier-manip)', fontStyle: 'italic', fontFamily: 'var(--font-sans)' }}>Unable to assess this field</span>
-                    ) : (
-                      displayVal
+              return displayed.map((f) => {
+                const displayVal = revealedValues[f.field_id] || (typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value));
+                const isMasked = f.name.includes('aadhaar') || f.name.includes('pan');
+                const isRevealed = Boolean(revealedValues[f.field_id]);
+                const isHovered = hoveredFieldId === f.field_id;
+                const isLine = isLineField(f.name);
+
+                return (
+                  <div
+                    key={f.field_id}
+                    onMouseEnter={() => setHoveredFieldId(f.field_id)}
+                    onMouseLeave={() => setHoveredFieldId(null)}
+                    className="panel"
+                    style={{
+                      backgroundColor: isHovered ? 'var(--bg-subtle)' : 'var(--bg-panel)',
+                      borderColor: isHovered ? 'var(--accent-main)' : isLine ? 'var(--border-color)' : '#38bdf8',
+                      borderLeftWidth: isLine ? '2px' : '4px',
+                      padding: '8px 10px',
+                      marginBottom: '6px',
+                      transition: 'border-color 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: isLine ? 'var(--text-muted)' : 'var(--text-main)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
+                        {isLine ? f.name.replace(/_/g, ' ').toUpperCase() : f.name.replace(/_/g, ' ')}
+                      </span>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <span
+                          style={{
+                            fontSize: '9.5px',
+                            backgroundColor: 'var(--bg-subtle)',
+                            color: 'var(--text-muted)',
+                            padding: '1px 4px',
+                            borderRadius: '3px',
+                            border: '1px solid var(--border-color)',
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {f.source}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '9.5px',
+                            fontWeight: '700',
+                            backgroundColor: 'var(--bg-subtle)',
+                            color: f.confidence >= 0.85 ? '#059669' : 'var(--tier-incons)',
+                            border: '1px solid var(--border-color)',
+                            padding: '1px 4px',
+                            borderRadius: '3px',
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {(f.confidence * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '12.5px', color: 'var(--text-main)', wordBreak: 'break-word', marginTop: '2px', fontFamily: 'var(--font-mono)' }}>
+                      {f.unable_to_assess ? (
+                        <span style={{ color: 'var(--tier-manip)', fontStyle: 'italic', fontFamily: 'var(--font-sans)' }}>Unable to assess this field</span>
+                      ) : (
+                        displayVal
+                      )}
+                    </div>
+
+                    {isMasked && !f.unable_to_assess && (
+                      <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={() => handleReveal(f.field_id)}
+                          disabled={isRevealed}
+                          className="btn-action"
+                          style={{
+                            fontSize: '10px',
+                            padding: '2px 6px',
+                          }}
+                        >
+                          {isRevealed ? 'Revealed (Audited)' : 'Reveal (Audit-Logged)'}
+                        </button>
+                      </div>
                     )}
                   </div>
-
-                  {isMasked && !f.unable_to_assess && (
-                    <div style={{ marginTop: '6px', display: 'flex', justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={() => handleReveal(f.field_id)}
-                        disabled={isRevealed}
-                        className="btn-action"
-                        style={{
-                          fontSize: '10px',
-                          padding: '2px 6px',
-                        }}
-                      >
-                        {isRevealed ? 'Revealed (Audited)' : 'Reveal (Audit-Logged)'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                );
+              });
+            })()
           )}
         </div>
       </div>

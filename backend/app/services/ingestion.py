@@ -20,10 +20,12 @@ from backend.app.models.contracts import (
 )
 from backend.app.services.audit import AuditService
 from backend.app.services.classification import classify_document_text
+from backend.app.services.llm_classification import classify_document_with_llm
 from backend.app.services.extraction.aadhaar_qr import extract_qr_from_image
 from backend.app.services.extraction.field_parser import parse_document_fields
 from backend.app.services.extraction.tesseract_ocr import run_tesseract_on_image
 from backend.app.services.extraction.text_layer import extract_pdf_text_layer
+from backend.app.services.extraction.office_text import extract_docx_text, extract_xlsx_text
 from backend.app.services.render import render_document_pages
 from backend.app.services.tesseract_cli import find_tesseract_binary
 
@@ -98,6 +100,7 @@ class IngestionService:
         self,
         investigation_id: str,
         doc_id: str,
+        llm_api_key: Optional[str] = None,
     ) -> DocumentRecord:
         """
         Executes full extraction pipeline on a single document:
@@ -154,22 +157,37 @@ class IngestionService:
             self.storage.save_document(investigation_id, doc, str(file_path))
             return doc
 
-        # 2. Extract text (PDF text layer first, fallback to Tesseract)
+        # 2. Extract text (PDF/Office text layer first, fallback to Tesseract)
         pages_data: List[Dict] = []
-        is_digital_pdf = False
+        is_digital_doc = False
 
         if suffix == ".pdf":
             try:
                 pages_data = extract_pdf_text_layer(file_path)
-                # Check if text layer contains meaningful text
                 total_text_len = sum(len(p.get("full_text", "").strip()) for p in pages_data)
                 if total_text_len > 20:
-                    is_digital_pdf = True
+                    is_digital_doc = True
+            except Exception:
+                pages_data = []
+        elif suffix in (".docx",):
+            try:
+                pages_data = extract_docx_text(file_path)
+                total_text_len = sum(len(p.get("full_text", "").strip()) for p in pages_data)
+                if total_text_len > 20:
+                    is_digital_doc = True
+            except Exception:
+                pages_data = []
+        elif suffix in (".xlsx", ".xls"):
+            try:
+                pages_data = extract_xlsx_text(file_path)
+                total_text_len = sum(len(p.get("full_text", "").strip()) for p in pages_data)
+                if total_text_len > 20:
+                    is_digital_doc = True
             except Exception:
                 pages_data = []
 
-        # If not digital PDF or text layer is sparse: run Tesseract CLI on rendered images
-        if not is_digital_pdf:
+        # If not digital document or text layer is sparse: run Tesseract CLI on rendered images
+        if not is_digital_doc:
             tesseract_bin = find_tesseract_binary()
             if not tesseract_bin:
                 # OCR unavailable state
@@ -188,7 +206,33 @@ class IngestionService:
                     self.storage.save_document(investigation_id, doc, str(file_path))
                     return doc
 
-                full_page_text = " ".join(w["text"] for w in ocr_words)
+                # Cluster words into visual lines with newlines
+                sorted_words = sorted(ocr_words, key=lambda w: (w["bbox"][1] + w["bbox"][3]) / 2)
+                v_lines = []
+                for w in sorted_words:
+                    cy = (w["bbox"][1] + w["bbox"][3]) / 2
+                    h = max(10, w["bbox"][3] - w["bbox"][1])
+                    assigned = False
+                    for vl in v_lines:
+                        vl_cy = (vl["bbox"][1] + vl["bbox"][3]) / 2
+                        vl_h = vl["bbox"][3] - vl["bbox"][1]
+                        if abs(cy - vl_cy) < max(h, vl_h) * 0.6:
+                            vl["words"].append(w)
+                            vl["bbox"][1] = min(vl["bbox"][1], w["bbox"][1])
+                            vl["bbox"][3] = max(vl["bbox"][3], w["bbox"][3])
+                            assigned = True
+                            break
+                    if not assigned:
+                        v_lines.append({"bbox": list(w["bbox"]), "words": [w]})
+
+                line_strings = []
+                for vl in v_lines:
+                    vl["words"].sort(key=lambda w: w["bbox"][0])
+                    ltxt = " ".join(w["text"] for w in vl["words"]).strip()
+                    if ltxt:
+                        line_strings.append(ltxt)
+
+                full_page_text = "\n".join(line_strings) if line_strings else " ".join(w["text"] for w in ocr_words)
                 pages_data.append({
                     "page": p_num,
                     "full_text": full_page_text,
@@ -212,9 +256,21 @@ class IngestionService:
                     {"detail": "QR code detected on page 1 but could not be decoded. Unable to assess."},
                 )
 
-        # 4. Classify document
+        # 4. Classify document (Two-stage: XGBoost/Heuristic + LLM)
         combined_text = "\n".join(p.get("full_text", "") for p in pages_data)
         doc_type, type_confidence = classify_document_text(combined_text)
+
+        # Run LLM classification with accuracy and explanatory reasoning
+        llm_res = classify_document_with_llm(combined_text, api_key=llm_api_key)
+        doc.llm_type = llm_res.classification_type
+        doc.llm_accuracy = llm_res.accuracy
+        doc.llm_reasoning = llm_res.reasoning
+        doc.llm_provider = llm_res.provider
+
+        # Adopt LLM classification if heuristic was unsupported but LLM confidence is high
+        if doc_type == DocumentType.UNSUPPORTED and llm_res.classification_type != DocumentType.UNSUPPORTED and llm_res.accuracy >= 0.85:
+            doc_type = llm_res.classification_type
+            type_confidence = llm_res.accuracy
 
         doc.type = doc_type
         doc.type_confidence = type_confidence
@@ -222,15 +278,14 @@ class IngestionService:
         if doc_type == DocumentType.UNSUPPORTED:
             doc.status = DocumentStatus.UNSUPPORTED
             doc.error_message = "Unsupported document type, manual review required."
-            self.storage.save_document(investigation_id, doc, str(file_path))
             self.audit.log_event(investigation_id, "system", "document_unsupported", doc_id)
-            return doc
+        else:
+            doc.status = DocumentStatus.PROCESSED
 
-        # 5. Extract structured fields
+        # 5. Extract structured fields (and all OCR text lines for every document)
         fields = parse_document_fields(doc_id, doc_type, pages_data, qr_data, qr_box)
         self.storage.save_fields(fields)
         doc.fields = fields
-        doc.status = DocumentStatus.PROCESSED
         self.storage.save_document(investigation_id, doc, str(file_path))
 
         # Log completion
@@ -243,7 +298,7 @@ class IngestionService:
                 "type": doc.type.value,
                 "confidence": doc.type_confidence,
                 "fields_extracted": len(fields),
-                "source": "text_layer" if is_digital_pdf else "ocr",
+                "source": "text_layer" if is_digital_doc else "ocr",
             },
         )
 

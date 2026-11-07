@@ -18,7 +18,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.graphics.shapes import Drawing, Rect
+from reportlab.graphics.shapes import Drawing, Rect, Line, PolyLine
 from reportlab.graphics.barcode.qr import QrCodeWidget
 
 import sys
@@ -277,6 +277,156 @@ def generate_bank_statement_pdf(output_path: Path, data: dict, producer: Optiona
     doc.build(story)
 
 
+def make_signature_drawing(width: float = 2.0 * inch, height: float = 0.5 * inch) -> Drawing:
+    d = Drawing(width, height)
+    d.add(Line(10, 8, width - 10, 8, strokeColor=colors.HexColor("#1A237E"), strokeWidth=1.5))
+    d.add(PolyLine([
+        (15, 10), (30, 26), (45, 12), (60, 30), (75, 10), (90, 22),
+        (105, 14), (120, 28), (135, 10), (150, 18)
+    ], strokeColor=colors.HexColor("#1A237E"), strokeWidth=1.2))
+    return d
+
+
+def generate_loan_application_pdf(output_path: Path, data: dict, with_signature: bool = True):
+    doc = SimpleDocTemplate(str(output_path), pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_p = Paragraph("<b>HDFC BANK - HOME LOAN APPLICATION FORM</b>", ParagraphStyle("LoanTitle", fontName="Helvetica-Bold", fontSize=14, alignment=1, textColor=colors.HexColor("#004C8F")))
+    sub_p = Paragraph("Retail Assets & Mortgages Division", ParagraphStyle("LoanSub", fontName="Helvetica", fontSize=10, alignment=1, textColor=colors.HexColor("#333333")))
+    story.append(title_p)
+    story.append(sub_p)
+    story.append(Spacer(1, 15))
+
+    name = data.get("name", "Rajesh Sharma")
+    dob = data.get("dob", "14/05/1988")
+    pan = data.get("loan_pan", data.get("pan_number", "BCDPS1234E"))
+    income = data.get("declared_monthly_income", 85000.0)
+    loan_amt = data.get("loan_amount", 4500000.0)
+    purpose = data.get("purpose", "Purchase of Residential Flat")
+
+    fields_data = [
+        [Paragraph(f"<b>Applicant Name:</b> {name}", styles["Normal"]),
+         Paragraph(f"<b>Date of Birth:</b> {dob}", styles["Normal"])],
+        [Paragraph(f"<b>PAN:</b> {pan}", styles["Normal"]),
+         Paragraph(f"<b>Declared Monthly Income:</b> INR {income:,.2f}", styles["Normal"])],
+        [Paragraph(f"<b>Loan Amount:</b> INR {loan_amt:,.2f}", styles["Normal"]),
+         Paragraph(f"<b>Purpose of Loan:</b> {purpose}", styles["Normal"])],
+    ]
+    t = Table(fields_data, colWidths=[3.4 * inch, 3.4 * inch])
+    t.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#004C8F")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7FAFC")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 20))
+
+    story.append(Paragraph("<b>Applicant Signature:</b>", styles["Normal"]))
+    story.append(Spacer(1, 4))
+    if with_signature:
+        story.append(make_signature_drawing())
+    else:
+        story.append(Spacer(1, 25))
+
+    doc.build(story)
+
+
+def generate_15g_pdf(output_path: Path, data: dict, with_signature: bool = True):
+    doc = SimpleDocTemplate(str(output_path), pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_p = Paragraph("<b>FORM NO. 15G</b>", ParagraphStyle("G15Title", fontName="Helvetica-Bold", fontSize=14, alignment=1, textColor=colors.HexColor("#1A202C")))
+    sub_p = Paragraph("Declaration under section 197A (1), 197A(1A) of the Income-tax Act, 1961", ParagraphStyle("G15Sub", fontName="Helvetica", fontSize=9, alignment=1, textColor=colors.HexColor("#4A5568")))
+    story.append(title_p)
+    story.append(sub_p)
+    story.append(Spacer(1, 15))
+
+    name = data.get("name", "Rajesh Sharma")
+    pan = data.get("g15_pan", data.get("pan_number", "BCDPS1234E"))
+    fy = data.get("financial_year", "2026-2027")
+    est_income = data.get("estimated_annual_income", 1020000.0)
+    date_val = data.get("declaration_date", "05/10/2026")
+
+    fields_data = [
+        [Paragraph(f"<b>Name of Declarant:</b> {name}", styles["Normal"]),
+         Paragraph(f"<b>PAN:</b> {pan}", styles["Normal"])],
+        [Paragraph(f"<b>Financial Year:</b> {fy}", styles["Normal"]),
+         Paragraph(f"<b>Estimated Annual Income:</b> INR {est_income:,.2f}", styles["Normal"])],
+        [Paragraph(f"<b>Declaration Date:</b> {date_val}", styles["Normal"]),
+         Paragraph("<b>Status:</b> Individual", styles["Normal"])],
+    ]
+    t = Table(fields_data, colWidths=[3.4 * inch, 3.4 * inch])
+    t.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#4A5568")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F7FAFC")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 20))
+
+    story.append(Paragraph("<b>Declarant Signature:</b>", styles["Normal"]))
+    story.append(Spacer(1, 4))
+    if with_signature:
+        story.append(make_signature_drawing())
+    else:
+        story.append(Spacer(1, 25))
+
+    doc.build(story)
+
+
+def generate_payment_instruction_pdf(output_path: Path, data: dict, with_signature: bool = True):
+    doc = SimpleDocTemplate(str(output_path), pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_p = Paragraph("<b>AXIS BANK - NEFT / RTGS PAYMENT INSTRUCTION</b>", ParagraphStyle("PmtTitle", fontName="Helvetica-Bold", fontSize=13, alignment=1, textColor=colors.HexColor("#97144D")))
+    sub_p = Paragraph("Funds Transfer Customer Request Form", ParagraphStyle("PmtSub", fontName="Helvetica", fontSize=9, alignment=1, textColor=colors.HexColor("#4A5568")))
+    story.append(title_p)
+    story.append(sub_p)
+    story.append(Spacer(1, 15))
+
+    name = data.get("remitter_name", data.get("name", "Rajesh Sharma"))
+    acc_num = data.get("payment_account_number", data.get("account_number", "918020034567890"))
+    ben_name = data.get("beneficiary_name", "Torrent Power Electricity")
+    amt = data.get("payment_amount", 1800.0)
+    date_val = data.get("instruction_date", "15/10/2026")
+    purp = data.get("payment_purpose", "Utility Electricity Bill Payment")
+
+    fields_data = [
+        [Paragraph(f"<b>Remitter Name:</b> {name}", styles["Normal"]),
+         Paragraph(f"<b>Remitter Account Number:</b> {acc_num}", styles["Normal"])],
+        [Paragraph(f"<b>Beneficiary Name:</b> {ben_name}", styles["Normal"]),
+         Paragraph(f"<b>Payment Amount:</b> INR {amt:,.2f}", styles["Normal"])],
+        [Paragraph(f"<b>Instruction Date:</b> {date_val}", styles["Normal"]),
+         Paragraph(f"<b>Purpose:</b> {purp}", styles["Normal"])],
+    ]
+    t = Table(fields_data, colWidths=[3.4 * inch, 3.4 * inch])
+    t.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#97144D")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF8F8")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 20))
+
+    story.append(Paragraph("<b>Authorised Signatory:</b>", styles["Normal"]))
+    story.append(Spacer(1, 4))
+    if with_signature:
+        story.append(make_signature_drawing())
+    else:
+        story.append(Spacer(1, 25))
+
+    doc.build(story)
+
+
 BASE_GENUINE_TEMPLATE = {
     "name": "Rajesh Sharma",
     "father_name": "Suresh Sharma",
@@ -432,7 +582,68 @@ def generate_tampered_bundles(base_dir: Path):
 
     generate_bank_statement_pdf(t10_dir / "bank_statement.pdf", d10)
 
-    print("[OK] Generated tampered bundles 01, 02, 03, 05, 07, 08, 09, 10.")
+    # -------------------------------------------------------------
+    # Bundle: genuine_06 (Full 7-Document Bundle - All Consistent)
+    # -------------------------------------------------------------
+    g6_dir = base_dir / "genuine_06"
+    g6_dir.mkdir(parents=True, exist_ok=True)
+    d6 = copy.deepcopy(BASE_GENUINE_TEMPLATE)
+    chk6 = compute_verhoeff_checksum(d6["aadhaar_prefix"])
+    d6["aadhaar_number"] = d6["aadhaar_prefix"] + str(chk6)
+    d6["declared_monthly_income"] = 85000.0
+    d6["estimated_annual_income"] = 1020000.0
+    d6["payment_amount"] = 1800.0
+    generate_aadhaar_pdf(g6_dir / "aadhaar.pdf", d6)
+    generate_pan_pdf(g6_dir / "pan.pdf", d6)
+    generate_salary_slip_pdf(g6_dir / "salary_slip.pdf", d6)
+    generate_bank_statement_pdf(g6_dir / "bank_statement.pdf", d6)
+    generate_loan_application_pdf(g6_dir / "loan_application.pdf", d6, with_signature=True)
+    generate_15g_pdf(g6_dir / "declaration_15g.pdf", d6, with_signature=True)
+    generate_payment_instruction_pdf(g6_dir / "payment_instruction.pdf", d6, with_signature=True)
+
+    # -------------------------------------------------------------
+    # Tampered 11: Loan Application Declared Income Inflation
+    # -------------------------------------------------------------
+    t11_dir = base_dir / "tampered_11_income_inflate"
+    t11_dir.mkdir(parents=True, exist_ok=True)
+    d11 = copy.deepcopy(BASE_GENUINE_TEMPLATE)
+    chk11 = compute_verhoeff_checksum(d11["aadhaar_prefix"])
+    d11["aadhaar_number"] = d11["aadhaar_prefix"] + str(chk11)
+    d11["declared_monthly_income"] = 185000.0  # Inflated vs 85000 salary gross
+    generate_aadhaar_pdf(t11_dir / "aadhaar.pdf", d11)
+    generate_pan_pdf(t11_dir / "pan.pdf", d11)
+    generate_salary_slip_pdf(t11_dir / "salary_slip.pdf", d11)
+    generate_bank_statement_pdf(t11_dir / "bank_statement.pdf", d11)
+    generate_loan_application_pdf(t11_dir / "loan_application.pdf", d11, with_signature=True)
+
+    # -------------------------------------------------------------
+    # Tampered 12: Form 15G Estimated Income Discrepancy
+    # -------------------------------------------------------------
+    t12_dir = base_dir / "tampered_12_15g_income"
+    t12_dir.mkdir(parents=True, exist_ok=True)
+    d12 = copy.deepcopy(BASE_GENUINE_TEMPLATE)
+    chk12 = compute_verhoeff_checksum(d12["aadhaar_prefix"])
+    d12["aadhaar_number"] = d12["aadhaar_prefix"] + str(chk12)
+    d12["estimated_annual_income"] = 250000.0  # Materially below 85000*12 = 1,020,000
+    generate_aadhaar_pdf(t12_dir / "aadhaar.pdf", d12)
+    generate_pan_pdf(t12_dir / "pan.pdf", d12)
+    generate_salary_slip_pdf(t12_dir / "salary_slip.pdf", d12)
+    generate_15g_pdf(t12_dir / "declaration_15g.pdf", d12, with_signature=True)
+
+    # -------------------------------------------------------------
+    # Tampered 13: Payment Instruction Debit Absent in Bank Ledger
+    # -------------------------------------------------------------
+    t13_dir = base_dir / "tampered_13_payment_absent"
+    t13_dir.mkdir(parents=True, exist_ok=True)
+    d13 = copy.deepcopy(BASE_GENUINE_TEMPLATE)
+    chk13 = compute_verhoeff_checksum(d13["aadhaar_prefix"])
+    d13["aadhaar_number"] = d13["aadhaar_prefix"] + str(chk13)
+    d13["payment_amount"] = 95000.0  # Not in bank debits
+    generate_aadhaar_pdf(t13_dir / "aadhaar.pdf", d13)
+    generate_bank_statement_pdf(t13_dir / "bank_statement.pdf", d13)
+    generate_payment_instruction_pdf(t13_dir / "payment_instruction.pdf", d13, with_signature=True)
+
+    print("[OK] Generated bundles: genuine_06, tampered 01, 02, 03, 05, 07, 08, 09, 10, 11, 12, 13.")
 
 
 def main():
