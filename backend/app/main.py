@@ -30,9 +30,11 @@ app.add_middleware(
 )
 
 app.include_router(investigations_router)
+app.include_router(investigations_router, prefix="/api")
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
     is_available, version, _ = get_tesseract_info()
     return {
@@ -44,6 +46,7 @@ def health_check():
 
 
 @app.get("/capabilities", response_model=CapabilitiesReport)
+@app.get("/api/capabilities", response_model=CapabilitiesReport)
 def get_capabilities() -> CapabilitiesReport:
     is_available, version, languages = get_tesseract_info()
 

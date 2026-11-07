@@ -1,0 +1,16 @@
+# Root requirements.txt for Netlify Functions & Python build
+fastapi>=0.115.0
+uvicorn>=0.30.6
+mangum>=0.17.0
+pydantic>=2.9.2
+pymupdf>=1.24.10
+opencv-python-headless>=4.10.0.84
+numpy>=2.0.0
+reportlab>=4.2.0
+python-multipart>=0.0.12
+pytest>=8.0.0
+xgboost>=2.0.0
+scikit-learn>=1.5.0
+joblib>=1.4.0
+python-docx>=1.1.0
+openpyxl>=3.1.0

@@ -5,8 +5,14 @@ export const API_BASE =
   (import.meta.env.DEV ? 'http://localhost:8000' : '');
 
 export async function createInvestigation(): Promise<Investigation> {
-  const res = await fetch(`${API_BASE}/investigations`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to create investigation');
+  const res = await fetch(`${API_BASE}/investigations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Failed to create investigation (${res.status}): ${errText || res.statusText}`);
+  }
   return res.json();
 }
 

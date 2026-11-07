@@ -1,5 +1,5 @@
 [build]
-  command = "npm --prefix frontend install && npm --prefix frontend run build && pip install -r backend/requirements.txt"
+  command = "npm --prefix frontend install && npm --prefix frontend run build && pip install -r requirements.txt"
   publish = "frontend/dist"
   functions = "netlify/functions"
 
@@ -15,41 +15,49 @@
   from = "/investigations/*"
   to = "/.netlify/functions/api/investigations/:splat"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/investigations"
   to = "/.netlify/functions/api/investigations"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/documents/*"
   to = "/.netlify/functions/api/documents/:splat"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/findings/*"
   to = "/.netlify/functions/api/findings/:splat"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/fields/*"
   to = "/.netlify/functions/api/fields/:splat"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/health"
   to = "/.netlify/functions/api/health"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/capabilities"
   to = "/.netlify/functions/api/capabilities"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
+  force = true
 
 # Single Page App (SPA) fallback for React / Vite client routing
 [[redirects]]

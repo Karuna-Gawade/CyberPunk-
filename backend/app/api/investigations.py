@@ -37,8 +37,27 @@ from backend.app.services.pii import mask_field_value
 from backend.app.services.render import get_rendered_page_path
 from backend.app.services.rules.rules_runner import execute_document_rules, execute_forensics_checks
 
-# Global persistent storage initialization
-DATA_DIR = Path("data")
+def _resolve_data_dir() -> Path:
+    # Check if running in serverless environment (Netlify Functions, AWS Lambda) or read-only filesystem
+    if os.environ.get("NETLIFY") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME") or os.environ.get("LAMBDA_TASK_ROOT"):
+        temp_data = Path(tempfile.gettempdir()) / "cyberpunk_data"
+        temp_data.mkdir(parents=True, exist_ok=True)
+        return temp_data
+
+    target = Path("data")
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        probe = target / ".write_probe"
+        probe.touch()
+        probe.unlink()
+        return target
+    except (OSError, PermissionError):
+        temp_data = Path(tempfile.gettempdir()) / "cyberpunk_data"
+        temp_data.mkdir(parents=True, exist_ok=True)
+        return temp_data
+
+# Global persistent storage initialization (adapts to serverless /tmp if read-only)
+DATA_DIR = _resolve_data_dir()
 DB_PATH = DATA_DIR / "app.db"
 storage_mgr = StorageManager(DB_PATH, DATA_DIR)
 audit_service = AuditService(DB_PATH)
