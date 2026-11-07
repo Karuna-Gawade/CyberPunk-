@@ -119,17 +119,28 @@ Open web browser to: `http://localhost:5173`
 
 ## ☁️ Deployment Guide
 
-### Frontend on Vercel
-1. Import repository on [vercel.com](https://vercel.com).
-2. Set **Root Directory** to `frontend`.
-3. Set Framework Preset to **Vite**.
-4. Add Environment Variable:
-   - `VITE_API_BASE_URL`: URL of your deployed backend (e.g. `https://your-backend.netlify.app` or container URL).
-5. Deploy. (Client-side routing is handled via `frontend/vercel.json`).
+### Option 1: Unified Fullstack Deployment on Netlify (Frontend + Backend on One Domain)
+The entire application (Vite React UI + FastAPI Python Backend) can be hosted on a single Netlify site:
 
-### Backend on Netlify / Container Platforms
-- **Netlify Functions**: Uses `netlify.toml` and `netlify/functions/api.py` with the `mangum` adapter.
-- **Docker / Container**: Deploy with the included `Dockerfile` on Render, Railway, or Fly.io for 100% full Tesseract OCR CLI and persistent SQLite storage.
+1. Push your repository to **GitHub**.
+2. Log in to [app.netlify.com](https://app.netlify.com) and click **"Add new site"** $\rightarrow$ **"Import an existing project"**.
+3. Select your GitHub repository (`CyberPunk-`).
+4. Netlify automatically detects [`netlify.toml`](netlify.toml) from the repository root:
+   - **Build Command:** `npm --prefix frontend install && npm --prefix frontend run build && pip install -r backend/requirements.txt`
+   - **Publish Directory:** `frontend/dist`
+   - **Functions Directory:** `netlify/functions`
+5. Under **Site configuration** $\rightarrow$ **Environment variables**, set:
+   - `PYTHON_VERSION`: `3.11`
+   - `NODE_VERSION`: `20`
+   - *(Optional)* LLM keys: `GEMINI_API_KEY`, `GROQ_API_KEY`
+6. Click **Deploy site**.
+   - Netlify serves the Vite frontend from its global CDN.
+   - API endpoints (`/investigations`, `/documents`, `/findings`, `/health`) are automatically routed to the serverless FastAPI backend via [`netlify/functions/api.py`](netlify/functions/api.py).
+   - Zero CORS configuration needed because both run on the same domain.
+
+### Option 2: Split Deployment (Frontend on Vercel + Backend on Container / Docker)
+- **Frontend on Vercel:** Import repository on [vercel.com](https://vercel.com), set root directory to `frontend`, framework to `Vite`, and set `VITE_API_BASE_URL` to your backend URL.
+- **Backend on Container (Render / Railway / Fly.io):** Deploy the included [`Dockerfile`](Dockerfile) for 100% full Tesseract OCR CLI and persistent SQLite volume storage.
 
 ---
 

@@ -1,6 +1,8 @@
 import { DocumentRecord, ExtractedField, Finding, Investigation, CapabilitiesReport, ReviewDecision, CaseDecisionType, AuditEvent } from '../types';
 
-export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:8000';
+export const API_BASE =
+  (import.meta.env.VITE_API_BASE_URL as string) ||
+  (import.meta.env.DEV ? 'http://localhost:8000' : '');
 
 export async function createInvestigation(): Promise<Investigation> {
   const res = await fetch(`${API_BASE}/investigations`, { method: 'POST' });

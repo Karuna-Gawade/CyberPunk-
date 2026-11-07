@@ -1,10 +1,58 @@
 [build]
+  command = "npm --prefix frontend install && npm --prefix frontend run build && pip install -r backend/requirements.txt"
+  publish = "frontend/dist"
   functions = "netlify/functions"
+
+[build.environment]
+  PYTHON_VERSION = "3.11"
+  NODE_VERSION = "20"
 
 [functions]
   included_files = ["backend/**", "data/**"]
 
+# Forward API routes to the Python FastAPI serverless function
+[[redirects]]
+  from = "/investigations/*"
+  to = "/.netlify/functions/api/investigations/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/investigations"
+  to = "/.netlify/functions/api/investigations"
+  status = 200
+
+[[redirects]]
+  from = "/documents/*"
+  to = "/.netlify/functions/api/documents/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/findings/*"
+  to = "/.netlify/functions/api/findings/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/fields/*"
+  to = "/.netlify/functions/api/fields/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/api/health"
+  status = 200
+
+[[redirects]]
+  from = "/capabilities"
+  to = "/.netlify/functions/api/capabilities"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+# Single Page App (SPA) fallback for React / Vite client routing
 [[redirects]]
   from = "/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "/index.html"
   status = 200
