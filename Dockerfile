@@ -15,22 +15,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy dependency definition
-COPY backend/pyproject.toml ./backend/
-RUN pip install --no-cache-dir \
-    fastapi==0.115.0 \
-    uvicorn==0.30.6 \
-    pydantic==2.9.2 \
-    pymupdf==1.24.10 \
-    opencv-python-headless==4.10.0.84 \
-    numpy==2.1.1 \
-    reportlab==4.2.5 \
-    pytest==8.3.3 \
-    python-multipart==0.0.12
+# Copy requirements and install full dependency suite
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY . .
 
+# Ensure persistent data directories exist
+RUN mkdir -p data/originals data/rendered
+
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Listen on $PORT (assigned by Render, Railway, or Fly.io) falling back to 8000
+CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

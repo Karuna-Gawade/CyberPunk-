@@ -3,10 +3,12 @@ Main FastAPI Application for PS-2 AI Document Forensics System.
 Advisory output. Final decision rests with the human reviewer.
 """
 
-from dotenv import load_dotenv
-
-# Load optional .env variables (e.g. GEMINI_API_KEY, GROQ_API_KEY)
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    # Load optional .env variables (e.g. GEMINI_API_KEY, GROQ_API_KEY)
+    load_dotenv()
+except ImportError:
+    pass
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

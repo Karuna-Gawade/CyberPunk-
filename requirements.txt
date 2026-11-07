@@ -1,7 +1,8 @@
-# Root requirements.txt for Netlify Functions & Python build
+# Root requirements.txt for Docker, Netlify Functions, Render, & local builds
 fastapi>=0.115.0
 uvicorn>=0.30.6
 mangum>=0.17.0
+python-dotenv>=1.0.0
 pydantic>=2.9.2
 pymupdf>=1.24.10
 opencv-python-headless>=4.10.0.84
