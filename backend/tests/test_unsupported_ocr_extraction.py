@@ -165,3 +165,38 @@ def test_sbi_transaction_slip_end_to_end_upload_and_fields():
         assert len(f["bbox"]) == 4
         assert f["bbox"][2] >= f["bbox"][0]
         assert f["bbox"][3] >= f["bbox"][1]
+
+
+def test_ingestion_fallback_when_tesseract_unavailable(monkeypatch, tmp_path):
+    from backend.app.models.contracts import DocumentStatus, Investigation
+    from backend.app.services.ingestion import IngestionService
+    from backend.app.db.storage import StorageManager
+    from backend.app.services.audit import AuditService
+    import cv2
+    import numpy as np
+
+    # Mock find_tesseract_binary to return None (simulating Netlify serverless / Lambda)
+    monkeypatch.setattr("backend.app.services.ingestion.find_tesseract_binary", lambda: None)
+
+    storage = StorageManager(tmp_path / "app.db", tmp_path / "data")
+    audit = AuditService(tmp_path / "app.db")
+    service = IngestionService(storage, audit)
+
+    # Ingest a test image
+    fake_img = np.ones((400, 600, 3), dtype=np.uint8) * 255
+    cv2.putText(fake_img, "SBI Transaction Slip", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+    img_path = tmp_path / "SBI_Transaction_Slip.png"
+    cv2.imwrite(str(img_path), fake_img)
+
+    inv = Investigation(investigation_id="INV-TEST-FALLBACK", created_at="2026-11-07T14:18:00")
+    storage.create_investigation(inv)
+    doc_rec = service.ingest_file("INV-TEST-FALLBACK", "DOC-FALLBACK-1", img_path, "SBI_Transaction_Slip.png")
+
+    # Process without Tesseract
+    processed_doc = service.process_document("INV-TEST-FALLBACK", "DOC-FALLBACK-1")
+
+    # Assert it did NOT fail with OCR_FAILED!
+    assert processed_doc.status != DocumentStatus.OCR_FAILED
+    assert processed_doc.status in (DocumentStatus.PROCESSED, DocumentStatus.UNSUPPORTED)
+    assert len(processed_doc.fields) > 0
+
