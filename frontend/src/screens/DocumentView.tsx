@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { DocumentRecord, ExtractedField, BBox } from '../types';
-import { getDocumentFields, getDocumentPageImageUrl, revealField } from '../api/client';
+import {
+  getDocumentFields,
+  getDocumentPageImageUrl,
+  getDocumentForensicsHeatmapUrl,
+  revealField,
+} from '../api/client';
 
 interface DocumentViewProps {
   documents: DocumentRecord[];
@@ -33,6 +38,7 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [imgDimensions, setImgDimensions] = useState<{ width: number; height: number } | null>(null);
   const [fieldFilter, setFieldFilter] = useState<'all' | 'entities' | 'lines'>('all');
+  const [showForensicsOverlay, setShowForensicsOverlay] = useState<boolean>(false);
 
   useEffect(() => {
     if (!currentDocId) return;
@@ -121,31 +127,81 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
             >
               {currentDoc.status}
             </span>
+
+            {/* Multilingual & Handwriting Badges */}
+            <span
+              style={{
+                fontSize: '10px',
+                fontWeight: '700',
+                padding: '2px 6px',
+                borderRadius: '3px',
+                fontFamily: 'var(--font-mono)',
+                backgroundColor: currentDoc.has_handwriting ? '#f59e0b' : '#3b82f6',
+                color: '#FFFFFF',
+              }}
+            >
+              {currentDoc.has_handwriting ? 'HANDWRITING' : 'PRINTED'}
+            </span>
+
+            {currentDoc.scripts && currentDoc.scripts.some((s) => s !== 'Latin') && (
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  padding: '2px 6px',
+                  borderRadius: '3px',
+                  fontFamily: 'var(--font-mono)',
+                  backgroundColor: '#8b5cf6',
+                  color: '#FFFFFF',
+                }}
+              >
+                {currentDoc.scripts.filter((s) => s !== 'Latin').join(', ')}
+              </span>
+            )}
           </div>
 
-          {currentDoc.pages > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="btn-action"
-                style={{ padding: '2px 8px', fontSize: '11px' }}
-              >
-                &larr; Prev
-              </button>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                Page {currentPage} of {currentDoc.pages}
-              </span>
-              <button
-                disabled={currentPage >= currentDoc.pages}
-                onClick={() => setCurrentPage((p) => Math.min(currentDoc.pages, p + 1))}
-                className="btn-action"
-                style={{ padding: '2px 8px', fontSize: '11px' }}
-              >
-                Next &rarr;
-              </button>
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Tamper Heatmap Overlay Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowForensicsOverlay(!showForensicsOverlay)}
+              className={`btn-action ${showForensicsOverlay ? 'btn-accent' : ''}`}
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                backgroundColor: showForensicsOverlay ? '#f59e0b' : undefined,
+                color: showForensicsOverlay ? '#ffffff' : undefined,
+                borderColor: showForensicsOverlay ? '#d97706' : undefined,
+                fontWeight: '600',
+              }}
+            >
+              {showForensicsOverlay ? '🔥 Tamper Heatmap (Active)' : '🔍 Tamper Overlay'}
+            </button>
+
+            {currentDoc.pages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="btn-action"
+                  style={{ padding: '2px 8px', fontSize: '11px' }}
+                >
+                  &larr; Prev
+                </button>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  Page {currentPage} of {currentDoc.pages}
+                </span>
+                <button
+                  disabled={currentPage >= currentDoc.pages}
+                  onClick={() => setCurrentPage((p) => Math.min(currentDoc.pages, p + 1))}
+                  className="btn-action"
+                  style={{ padding: '2px 8px', fontSize: '11px' }}
+                >
+                  Next &rarr;
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Rendered Document Canvas with SVG BBox Overlays */}
@@ -161,7 +217,11 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
         >
           <div style={{ position: 'relative', display: 'inline-block' }}>
             <img
-              src={imageUrl}
+              src={
+                showForensicsOverlay
+                  ? getDocumentForensicsHeatmapUrl(currentDoc.doc_id, currentPage)
+                  : imageUrl
+              }
               alt={`Page ${currentPage}`}
               onLoad={(e) => {
                 const target = e.currentTarget;
@@ -422,6 +482,36 @@ export const DocumentView: React.FC<DocumentViewProps> = ({
                         {isLine ? f.name.replace(/_/g, ' ').toUpperCase() : f.name.replace(/_/g, ' ')}
                       </span>
                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        {f.is_handwritten && (
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              fontWeight: '700',
+                              backgroundColor: '#f59e0b',
+                              color: '#ffffff',
+                              padding: '1px 5px',
+                              borderRadius: '3px',
+                              fontFamily: 'var(--font-mono)',
+                            }}
+                          >
+                            HANDWRITTEN
+                          </span>
+                        )}
+                        {f.script && f.script !== 'Latin' && (
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              fontWeight: '700',
+                              backgroundColor: '#0284c7',
+                              color: '#ffffff',
+                              padding: '1px 5px',
+                              borderRadius: '3px',
+                              fontFamily: 'var(--font-mono)',
+                            }}
+                          >
+                            {f.script}
+                          </span>
+                        )}
                         <span
                           style={{
                             fontSize: '9.5px',

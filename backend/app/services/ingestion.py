@@ -303,6 +303,32 @@ class IngestionService:
 
         # 5. Extract structured fields (and all OCR text lines for every document)
         fields = parse_document_fields(doc_id, doc_type, pages_data, qr_data, qr_box)
+
+        # 6. Multilingual & Handwriting Enrichment
+        page1_img = rendered_pages[0] if rendered_pages else None
+        try:
+            from backend.app.services.extraction.multilingual_handwriting import enrich_fields_with_multilingual_and_handwriting
+            fields, doc_metrics = enrich_fields_with_multilingual_and_handwriting(fields, page1_img)
+            doc.primary_language = doc_metrics.get("primary_language", "en")
+            doc.detected_languages = doc_metrics.get("detected_languages", ["en"])
+            doc.scripts = doc_metrics.get("scripts", ["Latin"])
+            doc.has_handwriting = doc_metrics.get("has_handwriting", False)
+            doc.handwriting_ratio = doc_metrics.get("handwriting_ratio", 0.0)
+        except Exception:
+            pass
+
+        # 7. Generate Forensic Report & Tamper Heatmap for visual tampering localization
+        if page1_img and page1_img.exists():
+            try:
+                from backend.app.services.forensics.image_forensics import generate_forensic_report, generate_tamper_heatmap
+                f_report = generate_forensic_report(page1_img, doc_id, page_num=1)
+                heatmap_path = self.storage.rendered_dir / doc_id / "forensic_heatmap_1.png"
+                generate_tamper_heatmap(page1_img, heatmap_path)
+                f_report.heatmap_url = f"/documents/{doc_id}/pages/1/forensics/heatmap"
+                doc.forensic_report = f_report
+            except Exception:
+                pass
+
         self.storage.save_fields(fields)
         doc.fields = fields
         self.storage.save_document(investigation_id, doc, str(file_path))

@@ -57,14 +57,29 @@ def handler(event, context):
         if key in event and isinstance(event[key], str) and event[key].startswith(prefix):
             event[key] = event[key][len(prefix):] or "/"
 
-    # Normalize requestContext paths
-    if "requestContext" in event and isinstance(event["requestContext"], dict):
+    # Synthesize resource and requestContext for Mangum (Netlify events omit them by default)
+    if "resource" not in event:
+        event["resource"] = "/{proxy+}"
+    if "requestContext" not in event or not isinstance(event["requestContext"], dict):
+        event["requestContext"] = {
+            "resourcePath": "/{proxy+}",
+            "httpMethod": event.get("httpMethod", "GET"),
+            "identity": {"sourceIp": "127.0.0.1"},
+        }
+    else:
         rc = event["requestContext"]
-        if "http" in rc and isinstance(rc["http"], dict):
-            p = rc["http"].get("path", "")
-            if p.startswith(prefix):
-                rc["http"]["path"] = p[len(prefix):] or "/"
-        if "path" in rc and isinstance(rc["path"], str) and rc["path"].startswith(prefix):
-            rc["path"] = rc["path"][len(prefix):] or "/"
+        if "httpMethod" not in rc and "httpMethod" in event:
+            rc["httpMethod"] = event["httpMethod"]
+        if "identity" not in rc:
+            rc["identity"] = {"sourceIp": "127.0.0.1"}
+
+    # Normalize requestContext paths
+    rc = event["requestContext"]
+    if "http" in rc and isinstance(rc["http"], dict):
+        p = rc["http"].get("path", "")
+        if p.startswith(prefix):
+            rc["http"]["path"] = p[len(prefix):] or "/"
+    if "path" in rc and isinstance(rc["path"], str) and rc["path"].startswith(prefix):
+        rc["path"] = rc["path"][len(prefix):] or "/"
 
     return _mangum_handler(event, context)

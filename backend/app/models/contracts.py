@@ -97,6 +97,29 @@ class ExtractedField(BaseModel):
     page: int = Field(ge=1)
     bbox: BBox
     unable_to_assess: bool = False
+    is_handwritten: bool = False
+    language: Optional[str] = "en"
+    script: Optional[str] = "Latin"
+
+
+class TamperRegion(BaseModel):
+    bbox: BBox
+    score: float
+    technique: str  # "ela", "noise_discrepancy", "copy_move", "edge_boundary"
+    description: str
+
+
+class ForensicAnalysisReport(BaseModel):
+    doc_id: str
+    page: int = 1
+    tamper_score: float = 0.0  # 0.0 to 1.0
+    is_anomalous: bool = False
+    techniques_run: List[str] = []
+    regions: List[TamperRegion] = []
+    ela_mean_mse: float = 0.0
+    noise_variance_delta: float = 0.0
+    copy_move_matches: int = 0
+    heatmap_url: Optional[str] = None
 
 
 class DocumentRecord(BaseModel):
@@ -114,6 +137,12 @@ class DocumentRecord(BaseModel):
     status: DocumentStatus = DocumentStatus.UPLOADED
     error_message: Optional[str] = None
     fields: List[ExtractedField] = []
+    primary_language: Optional[str] = "en"
+    detected_languages: List[str] = ["en"]
+    scripts: List[str] = ["Latin"]
+    has_handwriting: bool = False
+    handwriting_ratio: float = 0.0
+    forensic_report: Optional[ForensicAnalysisReport] = None
 
 
 class EvidenceItem(BaseModel):
@@ -174,6 +203,52 @@ class AuditEvent(BaseModel):
     entry_hash: str
 
 
+class RelationshipNode(BaseModel):
+    id: str
+    label: str
+    type: str  # "document", "person", "identifier", "bank_account", "employer", "amount", "date"
+    doc_id: Optional[str] = None
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class RelationshipEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: str  # "OWNS", "ISSUED_BY", "EMPLOYS", "CROSS_VALIDATES", "CONTRADICTS", "CORRESPONDS_TO"
+    confidence: float = 1.0
+    status: str = "consistent"  # "consistent", "contradiction", "unverified"
+    details: str = ""
+
+
+class CrossDocRelationshipGraph(BaseModel):
+    nodes: List[RelationshipNode] = []
+    edges: List[RelationshipEdge] = []
+    consistency_score: float = 1.0
+    total_entities: int = 0
+    contradictions_count: int = 0
+
+
+class ReasoningChainStep(BaseModel):
+    step_index: int
+    title: str
+    premises: List[str]
+    observation: str
+    conclusion: str
+    evidence_refs: List[EvidenceItem] = []
+    confidence: float = 0.90
+
+
+class AnomalyCorrelationCluster(BaseModel):
+    cluster_id: str
+    theme: str  # "Identity Divergence", "Financial Discrepancy", "Document Tampering", "Temporal Inconsistency"
+    severity: FindingTier
+    finding_ids: List[str]
+    synthesis_rationale: str
+    recommended_inquiry: str
+    chain: List[ReasoningChainStep] = []
+
+
 class Investigation(BaseModel):
     investigation_id: str
     created_at: str
@@ -182,6 +257,9 @@ class Investigation(BaseModel):
     priority_score: int = 0
     priority_breakdown: List[PriorityBreakdownItem] = []
     case_decision: Optional[CaseDecision] = None
+    relationship_graph: Optional[CrossDocRelationshipGraph] = None
+    correlation_clusters: List[AnomalyCorrelationCluster] = []
+    tampering_risk_score: float = 0.0
 
 
 class RuleResult(BaseModel):

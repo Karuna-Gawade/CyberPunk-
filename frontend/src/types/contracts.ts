@@ -58,6 +58,29 @@ export interface ExtractedField {
   page: number;
   bbox: BBox;
   unable_to_assess?: boolean;
+  is_handwritten?: boolean;
+  language?: string | null;
+  script?: string | null;
+}
+
+export interface TamperRegion {
+  bbox: BBox;
+  score: number;
+  technique: string;
+  description: string;
+}
+
+export interface ForensicAnalysisReport {
+  doc_id: string;
+  page: number;
+  tamper_score: number;
+  is_anomalous: boolean;
+  techniques_run: string[];
+  regions: TamperRegion[];
+  ela_mean_mse: number;
+  noise_variance_delta: number;
+  copy_move_matches: number;
+  heatmap_url?: string | null;
 }
 
 export interface DocumentRecord {
@@ -75,6 +98,12 @@ export interface DocumentRecord {
   status: DocumentStatus;
   error_message?: string | null;
   fields: ExtractedField[];
+  primary_language?: string | null;
+  detected_languages?: string[];
+  scripts?: string[];
+  has_handwriting?: boolean;
+  handwriting_ratio?: number;
+  forensic_report?: ForensicAnalysisReport | null;
 }
 
 export interface EvidenceItem {
@@ -135,6 +164,71 @@ export interface AuditEvent {
   entry_hash: string;
 }
 
+export interface RelationshipNode {
+  id: string;
+  label: string;
+  type: string;
+  doc_id?: string | null;
+  properties?: Record<string, any>;
+}
+
+export interface RelationshipEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+  confidence: number;
+  status: 'consistent' | 'contradiction' | 'unverified';
+  details?: string;
+}
+
+export interface CrossDocRelationshipGraph {
+  nodes: RelationshipNode[];
+  edges: RelationshipEdge[];
+  consistency_score: number;
+  total_entities: number;
+  contradictions_count: number;
+}
+
+export interface ReasoningChainStep {
+  step_index: number;
+  title: string;
+  premises: string[];
+  observation: string;
+  conclusion: string;
+  evidence_refs: EvidenceItem[];
+  confidence: number;
+}
+
+export interface AnomalyCorrelationCluster {
+  cluster_id: string;
+  theme: string;
+  severity: FindingTier;
+  finding_ids: string[];
+  synthesis_rationale: string;
+  recommended_inquiry: string;
+  chain: ReasoningChainStep[];
+}
+
+export interface InvestigationAnalytics {
+  investigation_id: string;
+  total_documents: number;
+  total_fields: number;
+  tampering_risk_score: number;
+  consistency_score: number;
+  total_entities_discovered: number;
+  contradictions_count: number;
+  findings_by_tier: Record<string, number>;
+  languages: Record<string, number>;
+  scripts: Record<string, number>;
+  handwriting_stats: {
+    docs_with_handwriting: number;
+    total_handwritten_fields: number;
+    overall_handwriting_ratio: number;
+  };
+  correlation_clusters: AnomalyCorrelationCluster[];
+}
+
 export interface Investigation {
   investigation_id: string;
   created_at: string;
@@ -143,6 +237,9 @@ export interface Investigation {
   priority_score: number;
   priority_breakdown: PriorityBreakdownItem[];
   case_decision?: CaseDecision | null;
+  relationship_graph?: CrossDocRelationshipGraph | null;
+  correlation_clusters?: AnomalyCorrelationCluster[];
+  tampering_risk_score?: number;
 }
 
 export interface CapabilityStatus {

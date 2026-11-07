@@ -1,4 +1,16 @@
-import { DocumentRecord, ExtractedField, Finding, Investigation, CapabilitiesReport, ReviewDecision, CaseDecisionType, AuditEvent } from '../types';
+import {
+  DocumentRecord,
+  ExtractedField,
+  Finding,
+  Investigation,
+  CapabilitiesReport,
+  ReviewDecision,
+  CaseDecisionType,
+  AuditEvent,
+  CrossDocRelationshipGraph,
+  InvestigationAnalytics,
+  ForensicAnalysisReport,
+} from '../types';
 
 export const API_BASE =
   (import.meta.env.VITE_API_BASE_URL as string) ||
@@ -170,4 +182,26 @@ export async function verifyAuditChain(invId: string): Promise<{ chain_valid: bo
   const res = await fetch(`${API_BASE}/investigations/${invId}/audit/verify`);
   if (!res.ok) throw new Error('Failed to verify audit chain');
   return res.json();
+}
+
+export async function getInvestigationRelationships(invId: string): Promise<CrossDocRelationshipGraph> {
+  const res = await fetch(`${API_BASE}/investigations/${invId}/relationships`);
+  if (!res.ok) throw new Error('Failed to fetch cross-document relationships');
+  return res.json();
+}
+
+export async function getInvestigationAnalytics(invId: string): Promise<InvestigationAnalytics> {
+  const res = await fetch(`${API_BASE}/investigations/${invId}/analytics`);
+  if (!res.ok) throw new Error('Failed to fetch investigation analytics');
+  return res.json();
+}
+
+export async function getDocumentForensics(docId: string, pageNum: number = 1): Promise<ForensicAnalysisReport> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/pages/${pageNum}/forensics`);
+  if (!res.ok) throw new Error('Failed to fetch forensic analysis report');
+  return res.json();
+}
+
+export function getDocumentForensicsHeatmapUrl(docId: string, pageNum: number = 1): string {
+  return `${API_BASE}/documents/${docId}/pages/${pageNum}/forensics/heatmap`;
 }

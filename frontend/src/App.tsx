@@ -4,11 +4,12 @@ import { UploadScreen } from './screens/UploadScreen';
 import { DocumentView } from './screens/DocumentView';
 import { CrossDocumentView } from './screens/CrossDocumentView';
 import { FindingsView } from './screens/FindingsView';
+import { InvestigationAnalyticsView } from './screens/InvestigationAnalyticsView';
 import { Investigation, CapabilitiesReport, BBox } from './types';
 import { getCapabilities, getInvestigation, listInvestigations } from './api/client';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<'upload' | 'document' | 'cross_doc' | 'findings' | 'capabilities'>(() => {
+  const [currentTab, setCurrentTab] = useState<'upload' | 'document' | 'cross_doc' | 'findings' | 'analytics' | 'capabilities'>(() => {
     return (localStorage.getItem('active_tab') as any) || 'upload';
   });
   const [activeInvestigation, setActiveInvestigation] = useState<Investigation | null>(null);
@@ -208,6 +209,12 @@ export const App: React.FC = () => {
             Cross-Document
           </button>
           <button
+            onClick={() => setCurrentTab('analytics')}
+            className={`btn-action ${currentTab === 'analytics' ? 'btn-accent' : ''}`}
+          >
+            Evidence & Analytics
+          </button>
+          <button
             onClick={() => {
               setHighlightBBox(null);
               setCurrentTab('document');
@@ -299,6 +306,14 @@ export const App: React.FC = () => {
         {currentTab === 'cross_doc' && activeInvestigation && (
           <CrossDocumentView
             investigationId={activeInvestigation.investigation_id}
+            onJumpToEvidence={handleJumpToEvidence}
+          />
+        )}
+
+        {currentTab === 'analytics' && activeInvestigation && (
+          <InvestigationAnalyticsView
+            investigationId={activeInvestigation.investigation_id}
+            documents={activeInvestigation.documents}
             onJumpToEvidence={handleJumpToEvidence}
           />
         )}

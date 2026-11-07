@@ -23,6 +23,9 @@ from backend.app.models.contracts import (
     CaseDecision,
     ReviewerAction,
     EvidenceItem,
+    CrossDocRelationshipGraph,
+    AnomalyCorrelationCluster,
+    ForensicAnalysisReport,
 )
 
 
@@ -69,18 +72,6 @@ class StorageManager:
                     FOREIGN KEY (investigation_id) REFERENCES investigations(investigation_id)
                 )
             """)
-            # Auto-migrate documents table columns if upgrading
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(documents)")
-            existing_cols = [c[1] for c in cursor.fetchall()]
-            for col_name, col_type in [
-                ("llm_type", "TEXT"),
-                ("llm_accuracy", "REAL"),
-                ("llm_reasoning", "TEXT"),
-                ("llm_provider", "TEXT"),
-            ]:
-                if col_name not in existing_cols:
-                    conn.execute(f"ALTER TABLE documents ADD COLUMN {col_name} {col_type}")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS fields (
                     field_id TEXT PRIMARY KEY,
@@ -93,6 +84,9 @@ class StorageManager:
                     page INTEGER NOT NULL,
                     bbox TEXT NOT NULL,
                     unable_to_assess INTEGER NOT NULL DEFAULT 0,
+                    is_handwritten INTEGER NOT NULL DEFAULT 0,
+                    language TEXT DEFAULT 'en',
+                    script TEXT DEFAULT 'Latin',
                     FOREIGN KEY (doc_id) REFERENCES documents(doc_id)
                 )
             """)
@@ -114,6 +108,45 @@ class StorageManager:
                     FOREIGN KEY (investigation_id) REFERENCES investigations(investigation_id)
                 )
             """)
+
+            # Auto-migrate table columns if upgrading an existing database
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(documents)")
+            existing_doc_cols = [c[1] for c in cursor.fetchall()]
+            for col_name, col_type in [
+                ("llm_type", "TEXT"),
+                ("llm_accuracy", "REAL"),
+                ("llm_reasoning", "TEXT"),
+                ("llm_provider", "TEXT"),
+                ("primary_language", "TEXT DEFAULT 'en'"),
+                ("detected_languages", "TEXT DEFAULT '[\"en\"]'"),
+                ("scripts", "TEXT DEFAULT '[\"Latin\"]'"),
+                ("has_handwriting", "INTEGER DEFAULT 0"),
+                ("handwriting_ratio", "REAL DEFAULT 0.0"),
+                ("forensic_report", "TEXT"),
+            ]:
+                if col_name not in existing_doc_cols:
+                    conn.execute(f"ALTER TABLE documents ADD COLUMN {col_name} {col_type}")
+
+            cursor.execute("PRAGMA table_info(investigations)")
+            existing_inv_cols = [c[1] for c in cursor.fetchall()]
+            for col_name, col_type in [
+                ("relationship_graph", "TEXT"),
+                ("correlation_clusters", "TEXT"),
+                ("tampering_risk_score", "REAL DEFAULT 0.0"),
+            ]:
+                if col_name not in existing_inv_cols:
+                    conn.execute(f"ALTER TABLE investigations ADD COLUMN {col_name} {col_type}")
+
+            cursor.execute("PRAGMA table_info(fields)")
+            existing_field_cols = [c[1] for c in cursor.fetchall()]
+            for col_name, col_type in [
+                ("is_handwritten", "INTEGER DEFAULT 0"),
+                ("language", "TEXT DEFAULT 'en'"),
+                ("script", "TEXT DEFAULT 'Latin'"),
+            ]:
+                if col_name not in existing_field_cols:
+                    conn.execute(f"ALTER TABLE fields ADD COLUMN {col_name} {col_type}")
             conn.commit()
 
     def create_investigation(self, investigation: Investigation):
@@ -138,19 +171,29 @@ class StorageManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT investigation_id, created_at, review_priority, priority_score, priority_breakdown, case_decision FROM investigations WHERE investigation_id = ?",
+                """
+                SELECT investigation_id, created_at, review_priority, priority_score, priority_breakdown, case_decision,
+                       relationship_graph, correlation_clusters, tampering_risk_score
+                FROM investigations WHERE investigation_id = ?
+                """,
                 (investigation_id,),
             )
             row = cursor.fetchone()
             if not row:
                 return None
 
-            inv_id, created_at, priority, score, breakdown_json, decision_json = row
+            inv_id, created_at, priority, score, breakdown_json, decision_json = row[:6]
+            graph_json = row[6] if len(row) > 6 else None
+            clusters_json = row[7] if len(row) > 7 else None
+            tamper_score = float(row[8]) if len(row) > 8 and row[8] is not None else 0.0
+
             docs = self.get_documents(investigation_id)
 
             breakdown_data = json.loads(breakdown_json)
             breakdown = [PriorityBreakdownItem.model_validate(item) for item in breakdown_data]
             decision = CaseDecision.model_validate(json.loads(decision_json)) if decision_json else None
+            graph = CrossDocRelationshipGraph.model_validate(json.loads(graph_json)) if graph_json else None
+            clusters = [AnomalyCorrelationCluster.model_validate(c) for c in json.loads(clusters_json)] if clusters_json else []
 
             return Investigation(
                 investigation_id=inv_id,
@@ -160,7 +203,33 @@ class StorageManager:
                 priority_score=score,
                 priority_breakdown=breakdown,
                 case_decision=decision,
+                relationship_graph=graph,
+                correlation_clusters=clusters,
+                tampering_risk_score=tamper_score,
             )
+
+    def save_investigation_analytics(
+        self,
+        investigation_id: str,
+        relationship_graph: Optional[CrossDocRelationshipGraph] = None,
+        correlation_clusters: Optional[List[AnomalyCorrelationCluster]] = None,
+        tampering_risk_score: float = 0.0,
+    ):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE investigations
+                SET relationship_graph = ?, correlation_clusters = ?, tampering_risk_score = ?
+                WHERE investigation_id = ?
+                """,
+                (
+                    json.dumps(relationship_graph.model_dump()) if relationship_graph else None,
+                    json.dumps([c.model_dump() for c in correlation_clusters]) if correlation_clusters else None,
+                    tampering_risk_score,
+                    investigation_id,
+                ),
+            )
+            conn.commit()
 
     def list_investigations(self) -> List[Investigation]:
         with sqlite3.connect(self.db_path) as conn:
@@ -180,9 +249,10 @@ class StorageManager:
                 """
                 INSERT OR REPLACE INTO documents (
                     doc_id, investigation_id, filename, file_path, sha256, type, type_confidence,
-                    pages, render_dpi, status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider
+                    pages, render_dpi, status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider,
+                    primary_language, detected_languages, scripts, has_handwriting, handwriting_ratio, forensic_report
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     doc.doc_id,
@@ -200,6 +270,12 @@ class StorageManager:
                     doc.llm_accuracy,
                     doc.llm_reasoning,
                     doc.llm_provider,
+                    doc.primary_language,
+                    json.dumps(doc.detected_languages),
+                    json.dumps(doc.scripts),
+                    1 if doc.has_handwriting else 0,
+                    doc.handwriting_ratio,
+                    json.dumps(doc.forensic_report.model_dump()) if doc.forensic_report else None,
                 ),
             )
             conn.commit()
@@ -210,7 +286,8 @@ class StorageManager:
             cursor.execute(
                 """
                 SELECT doc_id, filename, sha256, type, type_confidence, pages, render_dpi,
-                       status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider
+                       status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider,
+                       primary_language, detected_languages, scripts, has_handwriting, handwriting_ratio, forensic_report
                 FROM documents WHERE investigation_id = ?
                 """,
                 (investigation_id,),
@@ -226,6 +303,14 @@ class StorageManager:
                         llm_t = DocumentType(r[9])
                     except ValueError:
                         llm_t = None
+
+                p_lang = r[13] if len(r) > 13 and r[13] else "en"
+                det_langs = json.loads(r[14]) if len(r) > 14 and r[14] else ["en"]
+                scripts = json.loads(r[15]) if len(r) > 15 and r[15] else ["Latin"]
+                has_hw = bool(r[16]) if len(r) > 16 and r[16] is not None else False
+                hw_ratio = float(r[17]) if len(r) > 17 and r[17] is not None else 0.0
+                f_report = ForensicAnalysisReport.model_validate(json.loads(r[18])) if len(r) > 18 and r[18] else None
+
                 docs.append(
                     DocumentRecord(
                         doc_id=doc_id,
@@ -242,6 +327,12 @@ class StorageManager:
                         llm_reasoning=r[11],
                         llm_provider=r[12],
                         fields=fields,
+                        primary_language=p_lang,
+                        detected_languages=det_langs,
+                        scripts=scripts,
+                        has_handwriting=has_hw,
+                        handwriting_ratio=hw_ratio,
+                        forensic_report=f_report,
                     )
                 )
             return docs
@@ -252,7 +343,8 @@ class StorageManager:
             cursor.execute(
                 """
                 SELECT doc_id, filename, sha256, type, type_confidence, pages, render_dpi,
-                       status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider
+                       status, error_message, llm_type, llm_accuracy, llm_reasoning, llm_provider,
+                       primary_language, detected_languages, scripts, has_handwriting, handwriting_ratio, forensic_report
                 FROM documents WHERE doc_id = ?
                 """,
                 (doc_id,),
@@ -267,6 +359,14 @@ class StorageManager:
                     llm_t = DocumentType(r[9])
                 except ValueError:
                     llm_t = None
+
+            p_lang = r[13] if len(r) > 13 and r[13] else "en"
+            det_langs = json.loads(r[14]) if len(r) > 14 and r[14] else ["en"]
+            scripts = json.loads(r[15]) if len(r) > 15 and r[15] else ["Latin"]
+            has_hw = bool(r[16]) if len(r) > 16 and r[16] is not None else False
+            hw_ratio = float(r[17]) if len(r) > 17 and r[17] is not None else 0.0
+            f_report = ForensicAnalysisReport.model_validate(json.loads(r[18])) if len(r) > 18 and r[18] else None
+
             return DocumentRecord(
                 doc_id=r[0],
                 filename=r[1],
@@ -282,6 +382,12 @@ class StorageManager:
                 llm_reasoning=r[11],
                 llm_provider=r[12],
                 fields=fields,
+                primary_language=p_lang,
+                detected_languages=det_langs,
+                scripts=scripts,
+                has_handwriting=has_hw,
+                handwriting_ratio=hw_ratio,
+                forensic_report=f_report,
             )
 
     def get_document_file_path(self, doc_id: str) -> Optional[Path]:
@@ -303,8 +409,11 @@ class StorageManager:
             for f in fields:
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO fields (field_id, doc_id, name, value, raw_text, confidence, source, page, bbox, unable_to_assess)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO fields (
+                        field_id, doc_id, name, value, raw_text, confidence, source, page, bbox, unable_to_assess,
+                        is_handwritten, language, script
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         f.field_id,
@@ -317,6 +426,9 @@ class StorageManager:
                         f.page,
                         json.dumps(f.bbox),
                         1 if f.unable_to_assess else 0,
+                        1 if f.is_handwritten else 0,
+                        f.language,
+                        f.script,
                     ),
                 )
             conn.commit()
@@ -325,7 +437,11 @@ class StorageManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT field_id, doc_id, name, value, raw_text, confidence, source, page, bbox, unable_to_assess FROM fields WHERE doc_id = ?",
+                """
+                SELECT field_id, doc_id, name, value, raw_text, confidence, source, page, bbox, unable_to_assess,
+                       is_handwritten, language, script
+                FROM fields WHERE doc_id = ?
+                """,
                 (doc_id,),
             )
             rows = cursor.fetchall()
@@ -341,6 +457,9 @@ class StorageManager:
                     page=r[7],
                     bbox=json.loads(r[8]),
                     unable_to_assess=bool(r[9]),
+                    is_handwritten=bool(r[10]) if len(r) > 10 and r[10] is not None else False,
+                    language=r[11] if len(r) > 11 and r[11] else "en",
+                    script=r[12] if len(r) > 12 and r[12] else "Latin",
                 )
                 for r in rows
             ]
@@ -349,7 +468,11 @@ class StorageManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT field_id, doc_id, name, value, raw_text, confidence, source, page, bbox, unable_to_assess FROM fields WHERE field_id = ?",
+                """
+                SELECT field_id, doc_id, name, value, raw_text, confidence, source, page, bbox, unable_to_assess,
+                       is_handwritten, language, script
+                FROM fields WHERE field_id = ?
+                """,
                 (field_id,),
             )
             r = cursor.fetchone()
@@ -366,6 +489,9 @@ class StorageManager:
                 page=r[7],
                 bbox=json.loads(r[8]),
                 unable_to_assess=bool(r[9]),
+                is_handwritten=bool(r[10]) if len(r) > 10 and r[10] is not None else False,
+                language=r[11] if len(r) > 11 and r[11] else "en",
+                script=r[12] if len(r) > 12 and r[12] else "Latin",
             )
 
     def save_findings(self, investigation_id: str, findings: List[Finding]):

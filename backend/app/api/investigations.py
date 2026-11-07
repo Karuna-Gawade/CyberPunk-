@@ -25,6 +25,9 @@ from backend.app.models.contracts import (
     ReviewDecision,
     ReviewerAction,
     ReviewPriority,
+    CrossDocRelationshipGraph,
+    AnomalyCorrelationCluster,
+    ForensicAnalysisReport,
 )
 from backend.app.services.audit import AuditService
 from backend.app.services.correlation.cross_doc import CrossDocEngine
@@ -213,6 +216,26 @@ def process_investigation(inv_id: str, x_llm_api_key: Optional[str] = Header(Non
     # Save findings
     storage_mgr.save_findings(inv_id, escalated_findings)
 
+    # 6. Build Intelligent Cross-Document Relationship Discovery Graph
+    from backend.app.services.correlation.relationship_discovery import build_cross_document_relationship_graph
+    rel_graph = build_cross_document_relationship_graph(updated_docs, escalated_findings)
+
+    # 7. Build Advanced Contextual Reasoning & Anomaly Correlation Clusters
+    from backend.app.services.correlation.contextual_reasoning import build_contextual_reasoning_and_clusters
+    corr_clusters = build_contextual_reasoning_and_clusters(escalated_findings, updated_docs)
+
+    # 8. Compute overall tampering risk score
+    tamper_scores = [d.forensic_report.tamper_score for d in updated_docs if d.forensic_report]
+    overall_tamper_score = max(tamper_scores) if tamper_scores else 0.0
+
+    # 9. Save relationship graph and correlation clusters
+    storage_mgr.save_investigation_analytics(
+        investigation_id=inv_id,
+        relationship_graph=rel_graph,
+        correlation_clusters=corr_clusters,
+        tampering_risk_score=overall_tamper_score,
+    )
+
     # Log findings creation
     for f in escalated_findings:
         audit_service.log_event(
@@ -225,6 +248,131 @@ def process_investigation(inv_id: str, x_llm_api_key: Optional[str] = Header(Non
 
     updated_inv = storage_mgr.get_investigation(inv_id)
     return updated_inv
+
+
+@router.get("/investigations/{inv_id}/relationships", response_model=CrossDocRelationshipGraph)
+def get_investigation_relationships(inv_id: str):
+    """
+    Returns the interactive Cross-Document Relationship Network Graph,
+    including canonical entities, ownership linkages, and cross-document contradictions.
+    """
+    inv = storage_mgr.get_investigation(inv_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+
+    if inv.relationship_graph:
+        return inv.relationship_graph
+
+    # If not pre-computed, compute on the fly
+    from backend.app.services.correlation.relationship_discovery import build_cross_document_relationship_graph
+    docs = storage_mgr.get_documents(inv_id)
+    findings = storage_mgr.get_findings(inv_id)
+    graph = build_cross_document_relationship_graph(docs, findings)
+    return graph
+
+
+@router.get("/investigations/{inv_id}/analytics")
+def get_investigation_analytics(inv_id: str):
+    """
+    Returns comprehensive investigation analytics:
+    - Tampering risk score
+    - Cross-document consistency index
+    - Anomaly correlation clusters with step-by-step reasoning chains
+    - Multilingual and handwriting distribution statistics
+    """
+    inv = storage_mgr.get_investigation(inv_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Investigation not found")
+
+    docs = storage_mgr.get_documents(inv_id)
+    findings = storage_mgr.get_findings(inv_id)
+
+    # Multilingual & Handwriting distribution
+    total_docs = len(docs)
+    total_fields = sum(len(d.fields) for d in docs)
+    hw_fields = sum(1 for d in docs for f in d.fields if f.is_handwritten)
+
+    all_scripts: dict[str, int] = {}
+    for d in docs:
+        for s in d.scripts:
+            all_scripts[s] = all_scripts.get(s, 0) + 1
+
+    all_langs: dict[str, int] = {}
+    for d in docs:
+        for l in d.detected_languages:
+            all_langs[l] = all_langs.get(l, 0) + 1
+
+    tier_counts = {"observation": 0, "inconsistency": 0, "potential_manipulation": 0}
+    for f in findings:
+        tier_counts[f.tier.value] = tier_counts.get(f.tier.value, 0) + 1
+
+    graph = inv.relationship_graph
+    if not graph:
+        from backend.app.services.correlation.relationship_discovery import build_cross_document_relationship_graph
+        graph = build_cross_document_relationship_graph(docs, findings)
+
+    clusters = inv.correlation_clusters
+    if not clusters:
+        from backend.app.services.correlation.contextual_reasoning import build_contextual_reasoning_and_clusters
+        clusters = build_contextual_reasoning_and_clusters(findings, docs)
+
+    return {
+        "investigation_id": inv_id,
+        "total_documents": total_docs,
+        "total_fields": total_fields,
+        "tampering_risk_score": inv.tampering_risk_score,
+        "consistency_score": graph.consistency_score if graph else 1.0,
+        "total_entities_discovered": graph.total_entities if graph else 0,
+        "contradictions_count": graph.contradictions_count if graph else 0,
+        "findings_by_tier": tier_counts,
+        "languages": all_langs,
+        "scripts": all_scripts,
+        "handwriting_stats": {
+            "docs_with_handwriting": sum(1 for d in docs if d.has_handwriting),
+            "total_handwritten_fields": hw_fields,
+            "overall_handwriting_ratio": round(hw_fields / max(1, total_fields), 3),
+        },
+        "correlation_clusters": [c.model_dump() for c in clusters],
+    }
+
+
+@router.get("/documents/{doc_id}/pages/{page_num}/forensics", response_model=ForensicAnalysisReport)
+def get_document_page_forensics(doc_id: str, page_num: int):
+    """
+    Returns detailed image forensics analysis for tampering localization (ELA, noise, copy-move).
+    """
+    doc = storage_mgr.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    page_path = get_rendered_page_path(storage_mgr.rendered_dir, doc_id, page_num)
+    if not page_path.exists():
+        raise HTTPException(status_code=404, detail="Page render image not found")
+
+    from backend.app.services.forensics.image_forensics import generate_forensic_report
+    report = generate_forensic_report(page_path, doc_id, page_num=page_num)
+    report.heatmap_url = f"/documents/{doc_id}/pages/{page_num}/forensics/heatmap"
+    return report
+
+
+@router.get("/documents/{doc_id}/pages/{page_num}/forensics/heatmap")
+def get_document_tamper_heatmap(doc_id: str, page_num: int):
+    """
+    Returns visual tampering localization heatmap PNG (blended ELA and noise residuals).
+    """
+    heatmap_path = storage_mgr.rendered_dir / doc_id / f"forensic_heatmap_{page_num}.png"
+    if not heatmap_path.exists():
+        # Generate on the fly if needed
+        page_path = get_rendered_page_path(storage_mgr.rendered_dir, doc_id, page_num)
+        if not page_path.exists():
+            raise HTTPException(status_code=404, detail="Original page image not found")
+        from backend.app.services.forensics.image_forensics import generate_tamper_heatmap
+        generate_tamper_heatmap(page_path, heatmap_path)
+
+    if not heatmap_path.exists():
+        raise HTTPException(status_code=500, detail="Failed to render tampering heatmap")
+
+    return FileResponse(str(heatmap_path), media_type="image/png")
 
 
 @router.get("/investigations/{inv_id}/findings", response_model=List[Finding])
